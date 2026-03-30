@@ -1,8 +1,8 @@
 package si.rainalator.storage
 
+import jakarta.enterprise.context.ApplicationScoped
 import si.rainalator.ingestion.ProjectionConverter
 import si.rainalator.ingestion.RadarScan
-import java.sql.Connection
 import java.sql.Timestamp
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
@@ -12,6 +12,7 @@ import javax.sql.DataSource
  * Stores radar scans as PostGIS rasters.
  * Uses ST_MakeEmptyRaster + ST_AddBand + ST_SetValues to build rasters in SQL.
  */
+@ApplicationScoped
 class RasterStorageService(private val dataSource: DataSource) : RadarScanRepository {
 
     private val projectionConverter = ProjectionConverter()
