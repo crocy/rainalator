@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: rainalator-db
+    environment:
+      POSTGRES_DB: rainalator
+      POSTGRES_USER: rainalator
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-rainalator}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rainalator"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
