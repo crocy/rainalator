@@ -1,0 +1,30 @@
+SRD-3
+domain    TEST
+nrc       1
+rc        T1
+time      2026 01 15 12 00
+fdim      2
+ncell     5 3
+cellsize  1.0 1.0
+proj      LCC
+ellipse   6371.0 6371.0
+par       46.120 46.120
+origin    14.815  46.120
+shift     -2.0 -1.0
+nquant    1
+encode    BYTE
+quant     RRG
+unit      DBR/H
+scale     INC
+nlevel    16
+offset    64
+start     -8.0
+slope     2.0
+value
+nodata    126
+quality
+COMMENT
+DATA
+@A@B@
+C@D@@
+@@~@@
