@@ -1,0 +1,36 @@
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Node
+node_modules/
+dist/
+.angular/
+
+# Docker
+.docker/
+
+# Environment
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Quarkus
+target/
+
+# Test fixtures (keep sample files)
+!src/test/resources/
+
+# PostgreSQL data
+pgdata/
