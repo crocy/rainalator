@@ -55,6 +55,16 @@
   z-index: 999;
 }
 
+// Push Leaflet attribution above the timeline bar (Leaflet creates DOM
+// dynamically so Angular scoped styles won't reach it)
+::ng-deep .leaflet-bottom {
+  transition: bottom 0.2s;
+}
+
+.map-area:has(.timeline-overlay) ::ng-deep .leaflet-bottom {
+  bottom: 44px;
+}
+
 @media (max-width: 768px) {
   .layout {
     flex-direction: column-reverse;
