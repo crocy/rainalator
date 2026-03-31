@@ -27,7 +27,7 @@ class RadarDataScheduler {
         .connectTimeout(Duration.ofSeconds(30))
         .build()
 
-    @Scheduled(every = "{rainalator.fetch-interval-minutes}m", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+    @Scheduled(every = "{rainalator.fetch-interval}", concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     fun fetchAndStore() {
         try {
             Log.info("Fetching radar data from ARSO...")

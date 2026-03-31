@@ -1,8 +1,9 @@
-import { Component, ViewChild } from '@angular/core';
+import { Component, inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MapComponent } from './components/map/map.component';
 import { QueryPanelComponent } from './components/query-panel/query-panel.component';
 import { TimelineComponent } from './components/timeline/timeline.component';
+import { RainfallService } from './services/rainfall.service';
 import { RainfallQueryResponse } from './models/rainfall.models';
 
 @Component({
@@ -23,6 +24,8 @@ import { RainfallQueryResponse } from './models/rainfall.models';
           (polygonDrawn)="onPolygonDrawn($event)"
           (polygonCleared)="onPolygonCleared()"
         />
+        <div class="overlay-loading" *ngIf="overlayLoading">Loading overlay...</div>
+        <div class="overlay-error" *ngIf="overlayError">{{ overlayError }}</div>
         <div class="timeline-overlay" *ngIf="scanTimes.length > 0">
           <app-timeline
             [scanTimes]="scanTimes"
@@ -37,8 +40,13 @@ import { RainfallQueryResponse } from './models/rainfall.models';
 export class AppComponent {
   @ViewChild(MapComponent) mapComponent!: MapComponent;
 
+  private rainfallService = inject(RainfallService);
+  private currentBlobUrl: string | null = null;
+
   currentPolygon: string | null = null;
   scanTimes: string[] = [];
+  overlayLoading = false;
+  overlayError: string | null = null;
 
   onPolygonDrawn(wkt: string) {
     this.currentPolygon = wkt;
@@ -47,6 +55,8 @@ export class AppComponent {
   onPolygonCleared() {
     this.currentPolygon = null;
     this.scanTimes = [];
+    this.overlayError = null;
+    this.revokeCurrentBlob();
     this.mapComponent?.clearOverlay();
   }
 
@@ -61,21 +71,52 @@ export class AppComponent {
     }
   }
 
-  onScanSelected(timestamp: string) {
-    const url = `/api/rainfall/overlay/${encodeURIComponent(timestamp)}`;
-    // Fetch the overlay and get bounds from headers
-    fetch(url).then(resp => {
-      if (!resp.ok) return;
+  async onScanSelected(timestamp: string) {
+    const url = this.rainfallService.getOverlayUrl(timestamp);
+    this.overlayLoading = true;
+    this.overlayError = null;
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        this.overlayError = `Overlay failed (HTTP ${resp.status})`;
+        this.overlayLoading = false;
+        return;
+      }
+
+      const south = resp.headers.get('X-Bounds-South');
+      const west = resp.headers.get('X-Bounds-West');
+      const north = resp.headers.get('X-Bounds-North');
+      const east = resp.headers.get('X-Bounds-East');
+
+      if (!south || !west || !north || !east) {
+        this.overlayError = 'Missing bounds in overlay response';
+        this.overlayLoading = false;
+        return;
+      }
+
       const bounds = {
-        south: parseFloat(resp.headers.get('X-Bounds-South') || '0'),
-        west: parseFloat(resp.headers.get('X-Bounds-West') || '0'),
-        north: parseFloat(resp.headers.get('X-Bounds-North') || '0'),
-        east: parseFloat(resp.headers.get('X-Bounds-East') || '0'),
+        south: parseFloat(south),
+        west: parseFloat(west),
+        north: parseFloat(north),
+        east: parseFloat(east),
       };
-      resp.blob().then(blob => {
-        const objectUrl = URL.createObjectURL(blob);
-        this.mapComponent?.setOverlay(objectUrl, bounds);
-      });
-    });
+
+      const blob = await resp.blob();
+      this.revokeCurrentBlob();
+      this.currentBlobUrl = URL.createObjectURL(blob);
+      this.mapComponent?.setOverlay(this.currentBlobUrl, bounds);
+    } catch (e) {
+      this.overlayError = 'Failed to load overlay';
+    } finally {
+      this.overlayLoading = false;
+    }
+  }
+
+  private revokeCurrentBlob() {
+    if (this.currentBlobUrl) {
+      URL.revokeObjectURL(this.currentBlobUrl);
+      this.currentBlobUrl = null;
+    }
   }
 }

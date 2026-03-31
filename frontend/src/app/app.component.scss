@@ -19,6 +19,34 @@
   height: 100%;
 }
 
+.overlay-loading,
+.overlay-error {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 999;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  backdrop-filter: blur(8px);
+}
+
+.overlay-loading {
+  background: rgba(0, 200, 255, 0.15);
+  color: #80e0ff;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.overlay-error {
+  background: rgba(255, 60, 60, 0.2);
+  color: #ff8080;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .timeline-overlay {
   position: absolute;
   bottom: 0;
