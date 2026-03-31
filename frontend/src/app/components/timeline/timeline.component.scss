@@ -74,6 +74,25 @@
   }
 }
 
+.speed-select {
+  padding: 3px 4px;
+  border: 1px solid #2a3a4a;
+  border-radius: 4px;
+  background: #0d1b2a;
+  color: #e0e0e0;
+  font-size: 0.75rem;
+  cursor: pointer;
+
+  &:hover {
+    border-color: #00bfff;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #00bfff;
+  }
+}
+
 .scan-count {
   font-size: 0.75rem;
   color: #667788;

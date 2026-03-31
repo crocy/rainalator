@@ -37,6 +37,15 @@ import { CommonModule } from '@angular/common';
         <button class="ctrl-btn" (click)="next()" title="Next">&#9654;</button>
       </div>
 
+      <select
+        class="speed-select"
+        [value]="playbackSpeed"
+        (change)="onSpeedChange($event)"
+        title="Playback speed"
+      >
+        <option *ngFor="let s of speedPresets" [value]="s">{{ s }}x</option>
+      </select>
+
       <span class="scan-count">{{ currentIndex + 1 }} / {{ scanTimes.length }}</span>
     </div>
   `,
@@ -46,8 +55,12 @@ export class TimelineComponent implements OnDestroy {
   @Input() scanTimes: string[] = [];
   @Output() scanSelected = new EventEmitter<string>();
 
+  readonly speedPresets = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 5];
+  private readonly BASE_INTERVAL_MS = 500;
+
   currentIndex = 0;
   playing = false;
+  playbackSpeed = 1;
   playInterval: any = null;
 
   onSliderChange(event: Event): void {
@@ -67,6 +80,14 @@ export class TimelineComponent implements OnDestroy {
     if (this.scanTimes.length === 0) return;
     this.currentIndex = (this.currentIndex + 1) % this.scanTimes.length;
     this.emitCurrent();
+  }
+
+  onSpeedChange(event: Event): void {
+    this.playbackSpeed = Number((event.target as HTMLSelectElement).value);
+    if (this.playing) {
+      this.stopPlay();
+      this.startPlay();
+    }
   }
 
   togglePlay(): void {
@@ -93,9 +114,10 @@ export class TimelineComponent implements OnDestroy {
 
   private startPlay(): void {
     this.playing = true;
+    const intervalMs = this.BASE_INTERVAL_MS / this.playbackSpeed;
     this.playInterval = setInterval(() => {
       this.next();
-    }, 500);
+    }, intervalMs);
   }
 
   private stopPlay(): void {

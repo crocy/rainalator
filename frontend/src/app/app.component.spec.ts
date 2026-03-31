@@ -25,7 +25,7 @@ describe('AppComponent', () => {
     expect(component.currentPolygon).toBe('POLYGON((14 46, 15 46, 15 47, 14 47, 14 46))');
   });
 
-  it('should clear state on polygonCleared', () => {
+  it('should clear polygon and error on polygonCleared but keep scanTimes', () => {
     component.currentPolygon = 'POLYGON((14 46, 15 46, 15 47, 14 47, 14 46))';
     component.scanTimes = ['2026-03-30T12:00:00Z'];
     component.overlayError = 'some error';
@@ -33,7 +33,7 @@ describe('AppComponent', () => {
     component.onPolygonCleared();
 
     expect(component.currentPolygon).toBeNull();
-    expect(component.scanTimes).toEqual([]);
+    expect(component.scanTimes).toEqual(['2026-03-30T12:00:00Z']);
     expect(component.overlayError).toBeNull();
   });
 

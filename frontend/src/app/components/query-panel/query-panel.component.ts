@@ -32,8 +32,16 @@ import { RainfallQueryResponse } from '../../models/rainfall.models';
         />
       </div>
 
+      <button
+        class="load-radar-btn"
+        [disabled]="loadingScans"
+        (click)="loadRadar()"
+      >
+        {{ loadingScans ? 'Loading...' : 'Load Radar' }}
+      </button>
+
       <p *ngIf="!polygon" class="no-polygon-hint">
-        Draw a polygon on the map to select an area.
+        Draw a polygon on the map for rainfall analysis.
       </p>
 
       <button
@@ -94,6 +102,7 @@ export class QueryPanelComponent {
   fromDate = '';
   toDate = '';
   loading = false;
+  loadingScans = false;
   error: string | null = null;
   result: RainfallQueryResponse | null = null;
 
@@ -102,6 +111,26 @@ export class QueryPanelComponent {
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
     this.toDate = this.toDatetimeLocal(now);
     this.fromDate = this.toDatetimeLocal(twoHoursAgo);
+  }
+
+  loadRadar(): void {
+    this.loadingScans = true;
+    this.error = null;
+
+    const fromISO = this.toISO(this.fromDate);
+    const toISO = this.toISO(this.toDate);
+
+    this.rainfallService.getScanTimes(fromISO, toISO).subscribe({
+      next: (scanTimesResponse) => {
+        this.scanTimesLoaded.emit(scanTimesResponse.scanTimes);
+        this.loadingScans = false;
+      },
+      error: (err) => {
+        this.error =
+          err?.error?.message || err?.message || 'Failed to load scan times.';
+        this.loadingScans = false;
+      },
+    });
   }
 
   analyze(): void {
@@ -121,15 +150,6 @@ export class QueryPanelComponent {
           this.result = response;
           this.loading = false;
           this.queryResult.emit(response);
-
-          this.rainfallService.getScanTimes(fromISO, toISO).subscribe({
-            next: (scanTimesResponse) => {
-              this.scanTimesLoaded.emit(scanTimesResponse.scanTimes);
-            },
-            error: () => {
-              // Scan times are supplementary; don't fail the whole flow
-            },
-          });
         },
         error: (err) => {
           this.error =

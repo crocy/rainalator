@@ -53,6 +53,28 @@
   }
 }
 
+.load-radar-btn {
+  padding: 10px;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background: #0d1b2a;
+  color: #00bfff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover:not(:disabled) {
+    background: #1a2a3a;
+    border-color: #00bfff;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
 .analyze-btn {
   padding: 10px;
   border: none;

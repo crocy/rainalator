@@ -54,10 +54,7 @@ export class AppComponent {
 
   onPolygonCleared() {
     this.currentPolygon = null;
-    this.scanTimes = [];
     this.overlayError = null;
-    this.revokeCurrentBlob();
-    this.mapComponent?.clearOverlay();
   }
 
   onQueryResult(result: RainfallQueryResponse) {
