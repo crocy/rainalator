@@ -1,0 +1,151 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  overflow-y: auto;
+}
+
+.panel-header {
+  padding: 20px;
+  background: #16213e;
+  border-bottom: 2px solid #0f3460;
+
+  h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #00bfff;
+  }
+}
+
+.panel-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #8899aa;
+  }
+
+  input {
+    padding: 8px 10px;
+    border: 1px solid #2a3a4a;
+    border-radius: 4px;
+    background: #0d1b2a;
+    color: #e0e0e0;
+    font-size: 0.85rem;
+
+    &:focus {
+      outline: none;
+      border-color: #00bfff;
+    }
+  }
+}
+
+.analyze-btn {
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background: #0f3460;
+  color: #00bfff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover:not(:disabled) {
+    background: #1a4a7a;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.result-section {
+  margin-top: 8px;
+}
+
+.accumulated {
+  text-align: center;
+  padding: 16px;
+  background: #0d1b2a;
+  border-radius: 8px;
+  margin-bottom: 12px;
+
+  .value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #00bfff;
+  }
+
+  .unit {
+    font-size: 0.9rem;
+    color: #8899aa;
+    margin-left: 4px;
+  }
+
+  .label {
+    display: block;
+    font-size: 0.75rem;
+    color: #667788;
+    margin-top: 4px;
+  }
+}
+
+.meta {
+  font-size: 0.8rem;
+  color: #8899aa;
+  margin-bottom: 8px;
+}
+
+.scan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+
+  th {
+    padding: 6px 4px;
+    text-align: left;
+    border-bottom: 1px solid #2a3a4a;
+    color: #8899aa;
+    font-weight: 600;
+  }
+
+  td {
+    padding: 4px;
+    border-bottom: 1px solid #1a2a3a;
+  }
+}
+
+.error {
+  padding: 8px;
+  border-radius: 4px;
+  background: rgba(255, 0, 0, 0.1);
+  color: #ff4444;
+  font-size: 0.85rem;
+}
+
+.spinner {
+  text-align: center;
+  padding: 20px;
+  color: #00bfff;
+}
+
+.no-polygon-hint {
+  font-size: 0.8rem;
+  color: #667788;
+  font-style: italic;
+}

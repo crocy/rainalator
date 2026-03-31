@@ -1,0 +1,82 @@
+:host {
+  display: block;
+}
+
+.timeline-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(26, 26, 46, 0.95);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid #2a3a4a;
+  color: #e0e0e0;
+}
+
+.timestamp {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #00bfff;
+  min-width: 100px;
+}
+
+.slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: #2a3a4a;
+  border-radius: 2px;
+  outline: none;
+
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #00bfff;
+    cursor: pointer;
+  }
+
+  &::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #00bfff;
+    cursor: pointer;
+    border: none;
+  }
+}
+
+.controls {
+  display: flex;
+  gap: 4px;
+}
+
+.ctrl-btn {
+  padding: 4px 8px;
+  border: 1px solid #2a3a4a;
+  border-radius: 4px;
+  background: #0d1b2a;
+  color: #e0e0e0;
+  cursor: pointer;
+  font-size: 0.8rem;
+
+  &:hover {
+    background: #1a2a3a;
+    border-color: #00bfff;
+  }
+
+  &.active {
+    background: #0f3460;
+    border-color: #00bfff;
+    color: #00bfff;
+  }
+}
+
+.scan-count {
+  font-size: 0.75rem;
+  color: #667788;
+  min-width: 50px;
+  text-align: right;
+}
