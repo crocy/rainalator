@@ -19,8 +19,10 @@ class ProjectionConverter {
     )
 
     fun gridToLatLon(col: Int, row: Int, header: SrdHeader): LatLon {
-        val xKm = header.shiftX + col * header.cellSizeX
-        val yKm = header.shiftY + row * header.cellSizeY
+        // SRD shift defines the offset of the grid center from the projection origin.
+        // Row 0 is the northernmost (top) row; data is written north-to-south.
+        val xKm = header.shiftX + (col - header.width / 2.0) * header.cellSizeX
+        val yKm = header.shiftY + (header.height / 2.0 - row) * header.cellSizeY
 
         val lcc = crsFactory.createFromParameters("ARSO_LCC", buildProj4String(header))
         val transform = ctFactory.createTransform(lcc, wgs84)

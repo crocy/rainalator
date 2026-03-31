@@ -52,12 +52,13 @@ class ProjectionConverterTest {
     inner class ProjectionOrigin {
 
         @Test
-        fun `grid cell at shift offset maps to projection origin`() {
+        fun `grid cell at center offset maps to projection origin`() {
             // The projection origin (14.815, 46.120) should correspond to
             // the grid cell where x_km=0, y_km=0 in projected space.
-            // x_km = shiftX + col * cellSize = -4.0 + col * 1.0 = 0 → col = 4
-            // y_km = shiftY + row * cellSize = -6.0 + row * 1.0 = 0 → row = 6
-            val result = converter.gridToLatLon(4, 6, arsoHeader)
+            // SRD shift defines the offset of the grid center from the origin.
+            // x_km = shiftX + (col - width/2) * cellSize = 0 → col = width/2 - shiftX = 204
+            // y_km = shiftY + (height/2 - row) * cellSize = 0 → row = height/2 + shiftY = 144
+            val result = converter.gridToLatLon(204, 144, arsoHeader)
             assertThat(result.lon).isCloseTo(14.815, Offset.offset(0.01))
             assertThat(result.lat).isCloseTo(46.120, Offset.offset(0.01))
         }
@@ -68,45 +69,37 @@ class ProjectionConverterTest {
 
         @Test
         fun `Ljubljana is within the grid`() {
-            // Ljubljana ~ 14.505°E, 46.056°N
-            // It's west and slightly south of origin, so col < 4, row < 6 roughly
-            // At ~30km west of origin and ~7km south: col ≈ 4 - 30 = negative?
-            // Actually: x_km for Ljubljana ≈ (14.505 - 14.815) * 111 * cos(46.12°) ≈ -24 km
-            // col for x=-24: -4 + col*1 = -24 → col = -20. That can't be right in the grid.
-            // Let me reconsider: the grid goes from col=0 (x=-4km) to col=400 (x=396km)
-            // Ljubljana at ~-24km is outside the grid's west edge.
-            // Actually, LCC km don't directly equal lon*111. Let me just validate
-            // that the converter produces reasonable coordinates across the grid.
-
-            // Instead, let's check that the center of the grid gives a plausible Slovenian coordinate
+            // Ljubljana ~ 14.51°E, 46.06°N
+            // With center-based shift, the grid is centered near origin (14.815, 46.12)
+            // and Ljubljana is ~24km west and ~7km south of origin,
+            // so it falls within the grid at approximately col=180, row=151.
             val center = converter.gridToLatLon(200, 150, arsoHeader)
-            // Center of a 401x301 grid covering ~400x300 km centered(ish) on Slovenia
+            // Center of a 401x301 grid centered on Slovenia
             assertThat(center.lat).isBetween(44.0, 48.0) // Reasonable latitude for Slovenia region
             assertThat(center.lon).isBetween(12.0, 18.0) // Reasonable longitude for Slovenia region
         }
 
         @Test
         fun `grid corners produce reasonable coordinates`() {
-            val topLeft = converter.gridToLatLon(0, 0, arsoHeader)
-            val topRight = converter.gridToLatLon(400, 0, arsoHeader)
-            val bottomLeft = converter.gridToLatLon(0, 300, arsoHeader)
-            val bottomRight = converter.gridToLatLon(400, 300, arsoHeader)
+            // Row 0 is northernmost (top of grid), row 300 is southernmost
+            val nw = converter.gridToLatLon(0, 0, arsoHeader)
+            val ne = converter.gridToLatLon(400, 0, arsoHeader)
+            val sw = converter.gridToLatLon(0, 300, arsoHeader)
+            val se = converter.gridToLatLon(400, 300, arsoHeader)
 
             // All corners should be in the broader Alpine/Adriatic region
-            listOf(topLeft, topRight, bottomLeft, bottomRight).forEach { corner ->
+            listOf(nw, ne, sw, se).forEach { corner ->
                 assertThat(corner.lat).isBetween(42.0, 50.0)
                 assertThat(corner.lon).isBetween(10.0, 22.0)
             }
 
             // Longitude should increase west to east
-            assertThat(topRight.lon).isGreaterThan(topLeft.lon)
-            assertThat(bottomRight.lon).isGreaterThan(bottomLeft.lon)
+            assertThat(ne.lon).isGreaterThan(nw.lon)
+            assertThat(se.lon).isGreaterThan(sw.lon)
 
-            // Latitude should increase south to north (row 0 = north in SRD? or south?)
-            // In most raster formats, row 0 is the top (north). Let's verify row 300 is more south.
-            // Actually, SRD uses y_km = shift + row * cellsize, so row 0 has smallest y (southernmost)
-            // and row 300 has largest y (northernmost)
-            assertThat(bottomRight.lat).isGreaterThan(topRight.lat)
+            // Row 0 (north) should have higher latitude than row 300 (south)
+            assertThat(nw.lat).isGreaterThan(sw.lat)
+            assertThat(ne.lat).isGreaterThan(se.lat)
         }
     }
 
@@ -114,16 +107,20 @@ class ProjectionConverterTest {
     inner class GridBounds {
 
         @Test
-        fun `bounds cover Slovenia`() {
+        fun `bounds cover Slovenia and surroundings`() {
             val (sw, ne) = converter.gridBounds(arsoHeader)
 
-            // Grid shift is only -4km W, -6km S from origin (14.815, 46.12)
-            // So SW corner is near the origin, grid extends ~396km E and ~294km N
-            // SW should be near origin, NE should be far northeast
-            assertThat(sw.lat).isLessThan(46.2)  // Just below origin lat
-            assertThat(sw.lon).isLessThan(14.9)   // Just below origin lon
-            assertThat(ne.lat).isGreaterThan(48.0) // ~294km north
-            assertThat(ne.lon).isGreaterThan(20.0) // ~396km east
+            // Grid is centered near the origin (14.815, 46.12) with shift (-4, -6).
+            // 401x301 cells at 1km: spans ~400km W-E and ~300km N-S.
+            // The grid extends roughly 200km in each direction from center.
+            assertThat(sw.lat).isLessThan(45.0)   // Well south of origin
+            assertThat(sw.lon).isLessThan(13.0)    // Well west of origin
+            assertThat(ne.lat).isGreaterThan(47.0) // Well north of origin
+            assertThat(ne.lon).isGreaterThan(17.0)  // Well east of origin
+
+            // Origin should be roughly centered within the bounds
+            assertThat(14.815).isBetween(sw.lon, ne.lon)
+            assertThat(46.120).isBetween(sw.lat, ne.lat)
         }
 
         @Test
