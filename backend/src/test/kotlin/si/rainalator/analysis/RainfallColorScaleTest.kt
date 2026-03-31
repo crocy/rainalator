@@ -36,34 +36,59 @@ class RainfallColorScaleTest {
     inner class ColorBuckets {
 
         @Test
-        fun `light rain 0_3 returns light blue`() {
+        fun `drizzle 0_3 returns dark blue`() {
             val argb = scale.toArgb(0.3)
-            assertThat(alpha(argb)).isGreaterThan(0)
-            assertThat(blue(argb)).isGreaterThan(red(argb))
+            assertThat(red(argb)).isEqualTo(8)
+            assertThat(green(argb)).isEqualTo(90)
+            assertThat(blue(argb)).isEqualTo(254)
         }
 
         @Test
-        fun `moderate rain 3_0 returns green`() {
-            val argb = scale.toArgb(3.0)
-            assertThat(alpha(argb)).isGreaterThan(0)
-            assertThat(green(argb)).isGreaterThan(red(argb))
-            assertThat(green(argb)).isGreaterThan(blue(argb))
+        fun `light rain 0_5 returns blue`() {
+            val argb = scale.toArgb(0.5)
+            assertThat(red(argb)).isEqualTo(0)
+            assertThat(green(argb)).isEqualTo(140)
+            assertThat(blue(argb)).isEqualTo(254)
         }
 
         @Test
-        fun `heavy rain 15_0 returns orange`() {
-            val argb = scale.toArgb(15.0)
-            assertThat(alpha(argb)).isGreaterThan(0)
-            assertThat(red(argb)).isGreaterThan(blue(argb))
+        fun `rain 2_0 returns teal`() {
+            val argb = scale.toArgb(2.0)
+            assertThat(red(argb)).isEqualTo(4)
+            assertThat(green(argb)).isEqualTo(216)
+            assertThat(blue(argb)).isEqualTo(131)
         }
 
         @Test
-        fun `extreme rain 60_0 returns dark red`() {
-            val argb = scale.toArgb(60.0)
-            assertThat(alpha(argb)).isEqualTo(0xFF)
-            assertThat(red(argb)).isGreaterThan(0)
+        fun `moderate rain 8_0 returns lime`() {
+            val argb = scale.toArgb(8.0)
+            assertThat(red(argb)).isEqualTo(184)
+            assertThat(green(argb)).isEqualTo(250)
+            assertThat(blue(argb)).isEqualTo(0)
+        }
+
+        @Test
+        fun `heavy rain 30_0 returns orange`() {
+            val argb = scale.toArgb(30.0)
+            assertThat(red(argb)).isEqualTo(254)
+            assertThat(green(argb)).isEqualTo(132)
+            assertThat(blue(argb)).isEqualTo(0)
+        }
+
+        @Test
+        fun `extreme rain 80_0 returns red`() {
+            val argb = scale.toArgb(80.0)
+            assertThat(red(argb)).isEqualTo(211)
             assertThat(green(argb)).isEqualTo(0)
             assertThat(blue(argb)).isEqualTo(0)
+        }
+
+        @Test
+        fun `torrential rain 200_0 returns magenta`() {
+            val argb = scale.toArgb(200.0)
+            assertThat(red(argb)).isEqualTo(203)
+            assertThat(green(argb)).isEqualTo(0)
+            assertThat(blue(argb)).isEqualTo(204)
         }
     }
 
@@ -72,13 +97,13 @@ class RainfallColorScaleTest {
 
         @Test
         fun `alpha increases with intensity`() {
-            val alphaLight = alpha(scale.toArgb(0.3))
-            val alphaMod = alpha(scale.toArgb(3.0))
-            val alphaHeavy = alpha(scale.toArgb(15.0))
-            val alphaExtreme = alpha(scale.toArgb(60.0))
+            val alphaDrizzle = alpha(scale.toArgb(0.3))
+            val alphaModerate = alpha(scale.toArgb(3.0))
+            val alphaHeavy = alpha(scale.toArgb(30.0))
+            val alphaExtreme = alpha(scale.toArgb(120.0))
 
-            assertThat(alphaLight).isLessThan(alphaMod)
-            assertThat(alphaMod).isLessThan(alphaHeavy)
+            assertThat(alphaDrizzle).isLessThanOrEqualTo(alphaModerate)
+            assertThat(alphaModerate).isLessThanOrEqualTo(alphaHeavy)
             assertThat(alphaHeavy).isLessThanOrEqualTo(alphaExtreme)
         }
     }
@@ -87,10 +112,10 @@ class RainfallColorScaleTest {
     inner class BoundaryValues {
 
         @Test
-        fun `boundary 0_5 assigns to moderate bucket not light`() {
-            val argbBelow = scale.toArgb(0.49)
-            val argbAt = scale.toArgb(0.5)
-            // 0.5 should be in the next bucket (blue), different from 0.49 (light blue)
+        fun `boundary 0_40 assigns to next bucket`() {
+            val argbBelow = scale.toArgb(0.39)
+            val argbAt = scale.toArgb(0.40)
+            // 0.40 should be in the next bucket (blue), different from 0.39 (dark blue)
             assertThat(argbAt).isNotEqualTo(argbBelow)
         }
 
