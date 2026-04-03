@@ -4,7 +4,7 @@
   height: 100%;
   background: #1a1a2e;
   color: #e0e0e0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -24,6 +24,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
+  overflow: hidden;
 }
 
 .form-group {
@@ -98,6 +100,9 @@
 
 .result-section {
   margin-top: 8px;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .accumulated {
