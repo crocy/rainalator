@@ -25,6 +25,8 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://db:5432/rainalator
       QUARKUS_DATASOURCE_USERNAME: rainalator
       QUARKUS_DATASOURCE_PASSWORD: ${DB_PASSWORD:-rainalator}
+    ports:
+      - "8080:8080"
     depends_on:
       db:
         condition: service_healthy
@@ -40,7 +42,7 @@ services:
       context: frontend
     container_name: rainalator-frontend
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      - "${FRONTEND_PORT:-4200}:80"
     depends_on:
       backend:
         condition: service_healthy
