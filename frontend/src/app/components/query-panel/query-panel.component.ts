@@ -15,21 +15,19 @@ import { RainfallQueryResponse } from '../../models/rainfall.models';
 
     <div class="panel-body">
       <div class="form-group">
-        <label for="fromDate">From</label>
-        <input
-          type="datetime-local"
-          id="fromDate"
-          [(ngModel)]="fromDate"
-        />
+        <label>From</label>
+        <div class="datetime-row">
+          <input type="date" [(ngModel)]="fromDatePart" />
+          <input type="time" [(ngModel)]="fromTimePart" />
+        </div>
       </div>
 
       <div class="form-group">
-        <label for="toDate">To</label>
-        <input
-          type="datetime-local"
-          id="toDate"
-          [(ngModel)]="toDate"
-        />
+        <label>To</label>
+        <div class="datetime-row">
+          <input type="date" [(ngModel)]="toDatePart" />
+          <input type="time" [(ngModel)]="toTimePart" />
+        </div>
       </div>
 
       <button
@@ -99,8 +97,10 @@ export class QueryPanelComponent {
 
   private rainfallService = inject(RainfallService);
 
-  fromDate = '';
-  toDate = '';
+  fromDatePart = '';
+  fromTimePart = '';
+  toDatePart = '';
+  toTimePart = '';
   loading = false;
   loadingScans = false;
   error: string | null = null;
@@ -109,16 +109,18 @@ export class QueryPanelComponent {
   constructor() {
     const now = new Date();
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-    this.toDate = this.toDatetimeLocal(now);
-    this.fromDate = this.toDatetimeLocal(twoHoursAgo);
+    this.toDatePart = this.toDatePart_(now);
+    this.toTimePart = this.toTimePart_(now);
+    this.fromDatePart = this.toDatePart_(twoHoursAgo);
+    this.fromTimePart = this.toTimePart_(twoHoursAgo);
   }
 
   loadRadar(): void {
     this.loadingScans = true;
     this.error = null;
 
-    const fromISO = this.toISO(this.fromDate);
-    const toISO = this.toISO(this.toDate);
+    const fromISO = this.combinedISO(this.fromDatePart, this.fromTimePart);
+    const toISO = this.combinedISO(this.toDatePart, this.toTimePart);
 
     this.rainfallService.getScanTimes(fromISO, toISO).subscribe({
       next: (scanTimesResponse) => {
@@ -140,8 +142,8 @@ export class QueryPanelComponent {
     this.error = null;
     this.result = null;
 
-    const fromISO = this.toISO(this.fromDate);
-    const toISO = this.toISO(this.toDate);
+    const fromISO = this.combinedISO(this.fromDatePart, this.fromTimePart);
+    const toISO = this.combinedISO(this.toDatePart, this.toTimePart);
 
     this.rainfallService
       .queryRainfall({ polygon: this.polygon, from: fromISO, to: toISO })
@@ -159,14 +161,17 @@ export class QueryPanelComponent {
       });
   }
 
-  /** Convert a Date to the `YYYY-MM-DDTHH:mm` format used by datetime-local inputs. */
-  private toDatetimeLocal(d: Date): string {
+  private toDatePart_(d: Date): string {
     const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
 
-  /** Convert a datetime-local value (`YYYY-MM-DDTHH:mm`) to an ISO-8601 UTC string. */
-  private toISO(datetimeLocal: string): string {
-    return new Date(datetimeLocal).toISOString();
+  private toTimePart_(d: Date): string {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  private combinedISO(datePart: string, timePart: string): string {
+    return new Date(`${datePart}T${timePart}`).toISOString();
   }
 }

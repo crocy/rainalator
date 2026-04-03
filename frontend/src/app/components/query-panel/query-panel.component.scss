@@ -55,6 +55,21 @@
   }
 }
 
+.datetime-row {
+  display: flex;
+  gap: 6px;
+
+  input[type="date"] {
+    flex: 3;
+    min-width: 0;
+  }
+
+  input[type="time"] {
+    flex: 2;
+    min-width: 0;
+  }
+}
+
 .load-radar-btn {
   padding: 10px;
   border: 1px solid #0f3460;

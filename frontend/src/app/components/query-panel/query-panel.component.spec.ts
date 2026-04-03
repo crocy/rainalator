@@ -75,8 +75,10 @@ describe('QueryPanelComponent', () => {
 
   it('loadRadar emits scanTimesLoaded', () => {
     const spy = spyOn(component.scanTimesLoaded, 'emit');
-    component.fromDate = '2024-06-15T12:00';
-    component.toDate = '2024-06-15T14:00';
+    component.fromDatePart = '2024-06-15';
+    component.fromTimePart = '12:00';
+    component.toDatePart = '2024-06-15';
+    component.toTimePart = '14:00';
 
     component.loadRadar();
 
