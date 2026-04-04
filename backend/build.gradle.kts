@@ -55,6 +55,11 @@ allOpen {
     annotation("io.quarkus.test.junit.QuarkusTest")
 }
 
+sourceSets {
+    main { java.srcDirs("src/main/kotlin") }
+    test { java.srcDirs("src/test/kotlin") }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
