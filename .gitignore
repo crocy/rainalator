@@ -37,3 +37,6 @@ target/
 
 # PostgreSQL data
 pgdata/
+
+# Backend
+/backend/.kotlin/
