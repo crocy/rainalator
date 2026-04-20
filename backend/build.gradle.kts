@@ -31,12 +31,21 @@ dependencies {
     // PostGIS JDBC geometry types
     implementation("net.postgis:postgis-jdbc:2023.1.0")
 
+    // S3 archival
+    implementation(platform("io.quarkiverse.amazonservices:quarkus-amazon-services-bom:3.16.0"))
+    implementation("io.quarkiverse.amazonservices:quarkus-amazon-s3")
+    implementation("software.amazon.awssdk:url-connection-client")
+
+    // Compression for archival
+    implementation("org.apache.commons:commons-compress:1.27.1")
+
     // Testing
     testImplementation("io.quarkus:quarkus-junit5")
     testImplementation("io.rest-assured:rest-assured")
     testImplementation("org.testcontainers:testcontainers:1.20.4")
     testImplementation("org.testcontainers:postgresql:1.20.4")
     testImplementation("org.testcontainers:junit-jupiter:1.20.4")
+    testImplementation("org.testcontainers:localstack:1.20.4")
     testImplementation("org.assertj:assertj-core:3.27.3")
 }
 

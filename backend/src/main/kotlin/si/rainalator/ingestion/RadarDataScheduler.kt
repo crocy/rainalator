@@ -26,6 +26,9 @@ class RadarDataScheduler {
     @Inject
     lateinit var spillService: SpillService
 
+    @Inject
+    lateinit var archiveService: RawArchiveService
+
     private val parser = SrdParser()
 
     private val httpClient: HttpClient = HttpClient.newBuilder()
@@ -45,6 +48,8 @@ class RadarDataScheduler {
 
             val scan = parser.parse(body)
             val parseTime = System.currentTimeMillis() - startTime - fetchTime
+
+            archiveService.saveRawSrd(scan.header.time, body)
 
             try {
                 storageService.insert(scan)

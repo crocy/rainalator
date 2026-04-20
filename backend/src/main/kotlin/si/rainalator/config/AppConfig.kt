@@ -14,4 +14,13 @@ interface AppConfig {
 
     @WithDefault("data/spill")
     fun spillDir(): String
+
+    @WithDefault("data/raw-archive")
+    fun rawArchiveDir(): String
+
+    @WithDefault("rainalator-raw-archive")
+    fun s3Bucket(): String
+
+    @WithDefault("srd3/")
+    fun s3Prefix(): String
 }
