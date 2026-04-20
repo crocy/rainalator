@@ -52,8 +52,7 @@ class RainfallAnalysisServiceTest {
                 stmt.execute("CREATE EXTENSION IF NOT EXISTS postgis_raster")
                 stmt.execute("""
                     CREATE TABLE radar_scans (
-                        id            BIGSERIAL PRIMARY KEY,
-                        scan_time     TIMESTAMPTZ NOT NULL,
+                        scan_time     TIMESTAMPTZ NOT NULL PRIMARY KEY,
                         ingested_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                         source_radars TEXT[],
                         raster_data   RASTER NOT NULL,
@@ -61,8 +60,6 @@ class RainfallAnalysisServiceTest {
                         scan_metadata JSONB
                     )
                 """)
-                stmt.execute("ALTER TABLE radar_scans ADD CONSTRAINT uq_scan_time UNIQUE (scan_time)")
-                stmt.execute("CREATE INDEX idx_radar_scans_scan_time ON radar_scans (scan_time)")
                 stmt.execute("CREATE INDEX idx_radar_scans_bbox ON radar_scans USING GIST (bbox)")
             }
         }
