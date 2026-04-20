@@ -11,4 +11,7 @@ interface AppConfig {
 
     @WithDefault("5m")
     fun fetchInterval(): String
+
+    @WithDefault("data/spill")
+    fun spillDir(): String
 }
