@@ -6,7 +6,9 @@
 
 services:
   db:
-    image: postgis/postgis:16-3.4
+    # postgis/postgis is amd64-only; imresamu/postgis is the multi-arch
+    # community fork (same version/extensions, built for arm64 + amd64).
+    image: imresamu/postgis:16-3.4
     container_name: rainalator-db
     restart: unless-stopped
     environment:
