@@ -6,7 +6,9 @@ import {
   ElementRef,
   viewChild,
 } from '@angular/core';
-import * as L from 'leaflet';
+// Default import (not namespace) so we reference the live CJS module —
+// the same object leaflet-draw mutates via window.L. See leaflet-global.ts.
+import L from 'leaflet';
 import './leaflet-global'; // sets window.L — must evaluate before leaflet-draw
 import 'leaflet-draw';
 
