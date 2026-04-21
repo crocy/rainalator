@@ -1,5 +1,17 @@
 *
+
+# Prebuilt artifacts used by Dockerfile.jvm (host must run ./gradlew build first).
 !build/*-runner
 !build/*-runner.jar
 !build/lib/*
 !build/quarkus-app/*
+
+# Source tree used by Dockerfile.jvm-prod (multi-stage build inside the image).
+!src
+!src/**
+!gradle
+!gradle/**
+!gradlew
+!build.gradle.kts
+!settings.gradle.kts
+!gradle.properties
