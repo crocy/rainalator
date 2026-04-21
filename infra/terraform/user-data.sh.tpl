@@ -31,7 +31,7 @@ fi
 # 2. Format (only if blank) and mount at /var/lib/docker
 ############################################
 if ! blkid "$DATA_DEVICE" >/dev/null 2>&1; then
-  mkfs.xfs -L rainalator-data "$DATA_DEVICE"
+  mkfs.xfs -L rainalator "$DATA_DEVICE"
 fi
 
 mkdir -p "$DATA_MOUNT"
