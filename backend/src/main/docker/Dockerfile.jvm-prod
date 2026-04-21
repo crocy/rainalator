@@ -1,0 +1,42 @@
+####
+# Multi-stage JVM image used for AWS/EC2 deploys (docker-compose.prod.yml).
+#
+# Unlike Dockerfile.jvm, this one builds from source inside the image — so the
+# host only needs Docker, not a JDK. Build context must be the backend/ dir.
+####
+
+# ---- Stage 1: build ----
+FROM registry.access.redhat.com/ubi9/openjdk-25:1.24 AS builder
+
+USER root
+WORKDIR /src
+
+# Warm the dependency cache first so source-only edits don't re-download jars.
+COPY --chown=185 gradle gradle
+COPY --chown=185 gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
+RUN chmod +x gradlew && ./gradlew --no-daemon dependencies -q || true
+
+COPY --chown=185 src src
+RUN ./gradlew --no-daemon build -x test
+
+# ---- Stage 2: runtime ----
+FROM registry.access.redhat.com/ubi9/openjdk-25-runtime:1.24
+
+ENV LANGUAGE='en_US:en'
+
+COPY --from=builder --chown=185 /src/build/quarkus-app/lib/      /deployments/lib/
+COPY --from=builder --chown=185 /src/build/quarkus-app/*.jar     /deployments/
+COPY --from=builder --chown=185 /src/build/quarkus-app/app/      /deployments/app/
+COPY --from=builder --chown=185 /src/build/quarkus-app/quarkus/  /deployments/quarkus/
+
+# Pre-create writable dirs so named-volume mounts inherit 185:185 ownership.
+USER 0
+RUN mkdir -p /var/rainalator/spill /var/rainalator/raw-archive \
+ && chown -R 185:185 /var/rainalator
+
+EXPOSE 8080
+USER 185
+ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
+
+ENTRYPOINT [ "/opt/jboss/container/java/run/run-java.sh" ]
