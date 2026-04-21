@@ -19,6 +19,12 @@ data "aws_subnets" "default" {
   }
 }
 
+# Pin the EBS volume to the subnet's AZ (not the instance's), so that
+# replacing the instance doesn't force volume replacement.
+data "aws_subnet" "selected" {
+  id = data.aws_subnets.default.ids[0]
+}
+
 # AL2023 ARM64 AMI for t4g instances.
 data "aws_ami" "al2023_arm64" {
   most_recent = true
@@ -176,7 +182,7 @@ resource "aws_security_group_rule" "ssh" {
 ############################################
 
 resource "aws_ebs_volume" "data" {
-  availability_zone = aws_instance.app.availability_zone
+  availability_zone = data.aws_subnet.selected.availability_zone
   size              = var.data_volume_size_gb
   type              = "gp3"
   encrypted         = true
