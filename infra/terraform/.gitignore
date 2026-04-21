@@ -1,0 +1,13 @@
+.terraform/
+# NOTE: .terraform.lock.hcl is intentionally committed — HashiCorp recommends
+# checking in the dependency lock file so every init pins the same provider versions.
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+backend.hcl
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

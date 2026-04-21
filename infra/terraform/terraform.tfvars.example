@@ -1,0 +1,7 @@
+aws_region  = "eu-central-1"
+repo_url    = "https://github.com/YOUR_USER/rainalator.git"
+repo_branch = "main"
+
+# Optional — leave ssh_key_name empty to disable SSH and use SSM Session Manager instead.
+# ssh_key_name     = "my-keypair"
+# ssh_allowed_cidr = "203.0.113.42/32"
