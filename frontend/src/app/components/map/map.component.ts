@@ -7,6 +7,7 @@ import {
   viewChild,
 } from '@angular/core';
 import * as L from 'leaflet';
+import './leaflet-global'; // sets window.L — must evaluate before leaflet-draw
 import 'leaflet-draw';
 
 // Fix Leaflet default icon paths broken by Angular bundling
