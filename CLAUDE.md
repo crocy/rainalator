@@ -1,70 +1,33 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Intentionally high-level. Detailed commands, architecture rationale, schema, and API specifics live in `backend/README.md` and `frontend/README.md`.
 
-## Overview
-Radar rainfall data collection and visualization app. Ingests ARSO (Slovenian meteorological agency) radar data (SRD-3 format), stores as PostGIS rasters, web UI for querying accumulated rainfall over map-drawn polygons.
+## Repository overview
 
-## Build & Test Commands
-```bash
-# Backend
-cd backend && ./gradlew quarkusDev                    # Dev mode (hot reload, localhost:8080)
-cd backend && ./gradlew test                           # Unit tests (JUnit 5 + AssertJ)
-cd backend && ./gradlew test --tests '*SrdParserTest'  # Single test class
-cd backend && ./gradlew quarkusIntTest                 # Integration tests (needs Docker for Testcontainers)
-cd backend && ./gradlew build                          # Production JAR (build/quarkus-app/)
-cd backend && ./gradlew build -Dquarkus.native.enabled=true -Dquarkus.native.container-build=true  # Native binary
+Radar rainfall collection and visualization app: ingests ARSO (Slovenian met agency) radar data (SRD-3 format) every 5 min, stores it as PostGIS rasters, and serves a web UI for querying accumulated rainfall over map-drawn polygons.
 
-# Frontend
-cd frontend && npm start                     # Dev server (localhost:4200, proxies /api → :8080)
-cd frontend && npm test                      # Unit tests (Karma + Jasmine, ChromeHeadless)
-cd frontend && npm run build                 # Production build (dist/frontend/)
-
-# Database
-docker compose up db                         # Local PostGIS (localhost:5432, user/pass/db: rainalator)
-```
-
-## Development Approach
-- **TDD**: Write tests first, then implement. Every module gets tests before production code.
-- **Local-first**: Test everything with Docker Compose / Testcontainers locally before AWS deployment.
-- **Data retention**: Indefinite — no cleanup/retention scheduler.
-
-## Key Domain Knowledge
-- SRD-3 `unit DBR/H` is decibel rain rate — convert to mm/h via `R = 10^(dBR/10)`, NOT Marshall-Palmer
-- Grid: 401x301, 1km cells, LCC projection (origin 14.815°E, 46.120°N), grid shift -4km W, -6km S
-- Store rasters in WGS84 (SRID 4326), convert from LCC at ingestion time
-- One PostGIS raster row per 5-min scan (not 120K point rows)
-- SRD char decoding: '@' (64) = below threshold (0.0 mm/h), '~' (126) = nodata (NaN)
+- `backend/` — Kotlin + Quarkus REST service and ingestion scheduler (see `backend/README.md`)
+- `frontend/` — Angular 19 + Leaflet UI, standalone components (see `frontend/README.md`)
+- `infra/` — Terraform (AWS) + frontend deploy script
+- `docker-compose.yml` / `docker-compose.prod.yml` — local stack (db on :5432, user/pass/db all `rainalator`) and prod stack
 
 ## Architecture
 
-### Backend (Kotlin + Quarkus 3.34.1)
-Four packages under `si.rainalator`, data flows: ingestion → storage → analysis → api
+Backend data flow: `ingestion → storage → analysis → api` (packages under `si.rainalator`). One PostGIS raster row per 5-min scan in `radar_scans` (not 120K point rows); rasters stored in WGS84 (SRID 4326), converted from LCC at ingestion. Flyway migrations in `backend/src/main/resources/db/migration/`. Frontend talks to three REST endpoints under `/api/rainfall`; `npm start` dev server proxies `/api` → `:8080`.
 
-- **ingestion**: `SrdParser` (pure, parses SRD-3 text → `RadarScan`), `ProjectionConverter` (proj4j LCC→WGS84), `RadarDataScheduler` (`@Scheduled` every 5 min, fetches from ARSO)
-- **storage**: `RasterStorageService` implements `RadarScanRepository` — builds PostgreSQL array literals for `ST_SetValues()`, inserts one raster row per scan
-- **analysis**: `RainfallAnalysisService` — raw SQL with `ST_Clip`, `ST_SummaryStats`, `ST_DumpValues` (returns `double precision[][]`, 2D not flat). `RainfallColorScale` maps mm/h → ARGB. PNG overlay via Java2D `BufferedImage(TYPE_INT_ARGB)`
-- **api**: `RainfallResource` — REST endpoints: `POST /api/rainfall/query`, `GET /api/rainfall/scans`, `GET /api/rainfall/overlay/{timestamp}` (returns PNG with `X-Bounds-*` headers for Leaflet)
+## Development approach
 
-### Frontend (Angular 19 + Leaflet)
-All standalone components (no NgModules). Communication via `@Input`/`@Output` through `AppComponent`.
+- **TDD**: write tests first, then implement. Every module gets tests before production code.
+- **Local-first**: verify with Docker Compose / Testcontainers before any AWS deployment.
+- **Data retention**: indefinite — do not add cleanup/retention schedulers.
 
-- **AppComponent**: Layout (sidebar + map + timeline overlay), orchestrates data flow between children
-- **MapComponent**: Leaflet map, leaflet-draw for polygon drawing, emits WKT via `polygonDrawn`. `setOverlay(url, bounds)` / `clearOverlay()` called by parent for image overlays
-- **QueryPanelComponent**: Date range inputs + analyze button, calls `RainfallService`, emits `queryResult` and `scanTimesLoaded`
-- **TimelineComponent**: Scan timeline slider with play/pause (500ms/frame), emits `scanSelected(timestamp)`
-- **RainfallService**: HttpClient wrapper for all 3 backend endpoints
+## Conventions and gotchas
 
-### Database (PostgreSQL 16 + PostGIS 3.4)
-Table `radar_scans`: `scan_time TIMESTAMPTZ UNIQUE`, `raster_data RASTER` (401×301 float32), `bbox GEOMETRY(Polygon, 4326)`, `scan_metadata JSONB`. Indexes on `scan_time` and `bbox` (GiST). Flyway migrations in `backend/src/main/resources/db/migration/`.
-
-## Code Conventions
-- Package: `si.rainalator`
-- No Hibernate/JPA — Agroal DataSource with raw SQL for all PostGIS raster operations
-- Quarkus extensions only — no Spring dependencies
-- All timestamps UTC (`ZoneOffset.UTC`), ISO-8601 strings over HTTP
-- Config via `@ConfigMapping` interface (`AppConfig.kt`), not string keys
-
-## Test Patterns
-- **Backend integration tests**: `@Testcontainers` + `@TestInstance(PER_CLASS)`, container `postgis/postgis:16-3.4`, manual schema setup in `@BeforeAll`, `DELETE FROM` in `@BeforeEach`. Uses `@Nested` inner classes for grouping. AssertJ for assertions.
-- **Frontend tests**: `TestBed.configureTestingModule` with `provideHttpClient()` + `provideHttpClientTesting()`. Mock HTTP via `HttpTestingController.expectOne()` + `req.flush()`. `afterEach` calls `httpTesting.verify()`.
+- SRD-3 `unit DBR/H` is decibel rain rate — convert via `R = 10^(dBR/10)`, **NOT** Marshall-Palmer.
+- SRD char decoding: `'@'` (64) = below threshold (0.0 mm/h), `'~'` (126) = nodata (NaN).
+- No Hibernate/JPA — raw SQL via Agroal DataSource for all PostGIS raster operations.
+- Quarkus extensions only — no Spring dependencies.
+- All timestamps UTC, ISO-8601 strings over HTTP.
+- Config via the `@ConfigMapping` interface (`AppConfig.kt`), not string keys.
+- Backend integration tests need Docker (Testcontainers, real PostGIS — no mocking of spatial SQL).
+- `infra/terraform/` contains real deployment values: `terraform.tfvars` and `backend.hcl` are gitignored — never work around that; `tfplan` is not ignored, so never `git add` it.
