@@ -1,0 +1,54 @@
+name: Claude Code Review
+
+# Runs an automated Claude Code review when a pull request is opened and on
+# every subsequent push to the PR branch (synchronize). Requires an
+# ANTHROPIC_API_KEY repository secret.
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+# Cancel an in-flight review if the PR is updated again before it finishes.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Claude review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review the changes in this pull request and post your findings as a
+            PR review. Focus on real problems over style nits, and ground every
+            comment in the diff.
+
+            Check for:
+            - Correctness bugs, edge cases, and error handling gaps
+            - Security issues (injection, auth, secret handling, unsafe input)
+            - Adherence to this repo's conventions in CLAUDE.md, notably:
+              - SRD-3 `DBR/H` is decibel rain rate: R = 10^(dBR/10), NOT Marshall-Palmer
+              - SRD chars: '@' (64) = 0.0 mm/h below threshold, '~' (126) = NaN nodata
+              - Raw SQL via Agroal DataSource for PostGIS rasters; no Hibernate/JPA
+              - Quarkus extensions only (no Spring); config via @ConfigMapping, not string keys
+              - All timestamps UTC, ISO-8601 over HTTP
+            - Missing or inadequate tests (the project is TDD: tests before code)
+
+            If the diff looks good, say so briefly. Use inline comments for
+            specific lines and a short summary for overall feedback.
+          claude_args: |
+            --model claude-sonnet-4-6
+            --max-turns 15
