@@ -22,6 +22,12 @@ variable "repo_branch" {
   default     = "main"
 }
 
+variable "github_repository" {
+  description = "GitHub repository (owner/name) allowed to assume the CI/CD deploy role via OIDC."
+  type        = string
+  default     = "crocy/rainalator"
+}
+
 variable "instance_type" {
   description = "EC2 instance type. Must be an ARM/Graviton type to match the t4g AMI."
   type        = string

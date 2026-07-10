@@ -68,15 +68,42 @@ terraform state rm aws_ebs_volume.data
 terraform destroy
 ```
 
-### Deploy the frontend
+## CI/CD (GitHub Actions)
+
+Two workflows in `.github/workflows/` build, test, and deploy each half of the app. Deploys only run on `main` — PRs get build + tests only.
+
+| Workflow | On PRs | On push to `main` |
+|---|---|---|
+| `backend.yml` | Gradle build + Testcontainers integration tests | ...then deploy to EC2 via SSM Run Command (`git reset` to `main` + `docker compose up -d --build --wait`) |
+| `frontend.yml` | `npm ci`, Karma tests (headless Chrome), production build | ...then sync the bundle to S3 (`immutable` hashed assets, `no-cache` `index.html`) + CloudFront invalidation |
+
+Both can also be run manually via **workflow_dispatch** (deploy still only fires from `main`). Path filters mean a backend-only change doesn't rebuild/redeploy the frontend and vice versa.
+
+Auth uses **GitHub OIDC** — no AWS keys in GitHub. `infra/terraform/github-actions.tf` creates the OIDC provider and a least-privilege deploy role whose trust policy only accepts workflow runs on `main` of this repo. The frontend bucket name and CloudFront distribution ID are published to SSM parameters (`/rainalator/deploy/*`) so the workflows discover them at deploy time (they carry a random suffix, so hardcoding them in GitHub would go stale if the stack is recreated).
+
+### One-time CI/CD setup
+
+```bash
+# 1. Apply the Terraform (creates OIDC provider + deploy role + SSM params).
+terraform -chdir=infra/terraform apply
+
+# 2. Set the repository variables on GitHub (Settings → Secrets and variables → Actions → Variables):
+#    AWS_DEPLOY_ROLE_ARN = <output of the next command>
+#    AWS_REGION          = eu-central-1   (optional; workflows default to this)
+terraform -chdir=infra/terraform output -raw github_actions_role_arn
+```
+
+If your AWS account already has an OIDC provider for `token.actions.githubusercontent.com`, import it instead of letting Terraform create a duplicate: `terraform import aws_iam_openid_connect_provider.github <existing-arn>`.
+
+### Manual deploys (fallback)
+
+Frontend — builds the Angular app, syncs to S3 with correct cache headers (hashed assets `immutable`, `index.html` `no-cache`), and issues a CloudFront invalidation. Safe to re-run on every frontend change:
 
 ```bash
 ./infra/deploy-frontend.sh
 ```
 
-Builds the Angular app, syncs to S3 with correct cache headers (hashed assets `immutable`, `index.html` `no-cache`), and issues a CloudFront invalidation. Safe to re-run on every frontend change.
-
-### Updating the backend on EC2
+Backend on EC2:
 
 ```bash
 # Shell in via SSM Session Manager (no SSH needed):

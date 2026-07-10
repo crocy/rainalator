@@ -9,6 +9,7 @@ Radar rainfall collection and visualization app: ingests ARSO (Slovenian met age
 - `backend/` — Kotlin + Quarkus REST service and ingestion scheduler (see `backend/README.md`)
 - `frontend/` — Angular 19 + Leaflet UI, standalone components (see `frontend/README.md`)
 - `infra/` — Terraform (AWS) + frontend deploy script
+- `.github/workflows/` — CI/CD: build + test on PRs; deploy to AWS on push to `main` (OIDC role from `infra/terraform/github-actions.tf`)
 - `docker-compose.yml` / `docker-compose.prod.yml` — local stack (db on :5432, user/pass/db all `rainalator`) and prod stack
 
 ## Architecture

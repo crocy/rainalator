@@ -1,0 +1,120 @@
+name: Frontend
+
+# Build + test on PRs; on pushes to main (or manual dispatch from main),
+# additionally deploy the built bundle to S3 + invalidate CloudFront —
+# the same flow as infra/deploy-frontend.sh, but reading the bucket name
+# and distribution ID from SSM parameters (written by Terraform) instead
+# of local terraform state.
+#
+# One-time setup (see README "CI/CD"):
+#   - terraform apply creates the GitHub OIDC provider + deploy role
+#     (infra/terraform/github-actions.tf)
+#   - repo variable AWS_DEPLOY_ROLE_ARN = terraform output github_actions_role_arn
+#   - repo variable AWS_REGION (optional, defaults to eu-central-1)
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Chrome is preinstalled on ubuntu-latest runners.
+      - name: Test
+        run: npm test -- --watch=false --browsers=ChromeHeadless
+
+      - name: Build (production)
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/frontend/browser
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to S3 + CloudFront
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Serialize deploys; never cancel one mid-flight.
+    concurrency:
+      group: frontend-deploy
+      cancel-in-progress: false
+    permissions:
+      id-token: write # OIDC token for assuming the AWS deploy role
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+
+      - name: Sync to S3 and invalidate CloudFront
+        run: |
+          set -euo pipefail
+
+          BUCKET=$(aws ssm get-parameter --name /rainalator/deploy/frontend_bucket \
+            --query 'Parameter.Value' --output text)
+          DIST_ID=$(aws ssm get-parameter --name /rainalator/deploy/cloudfront_distribution_id \
+            --query 'Parameter.Value' --output text)
+
+          echo "Syncing to s3://$BUCKET ..."
+          # Two-pass sync: long cache for hashed assets, short cache for
+          # index.html (so the next deploy flips users to the new bundle
+          # immediately). Mirrors infra/deploy-frontend.sh.
+          aws s3 sync dist "s3://$BUCKET" \
+            --delete \
+            --exclude index.html \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 cp dist/index.html "s3://$BUCKET/index.html" \
+            --cache-control "no-cache, no-store, must-revalidate" \
+            --content-type "text/html"
+
+          echo "Invalidating CloudFront distribution $DIST_ID ..."
+          aws cloudfront create-invalidation \
+            --distribution-id "$DIST_ID" \
+            --paths '/*' \
+            --query 'Invalidation.Id' \
+            --output text
+
+          echo "Frontend deployed."

@@ -33,6 +33,11 @@ output "ec2_instance_id" {
   value       = aws_instance.app.id
 }
 
+output "github_actions_role_arn" {
+  description = "IAM role for GitHub Actions deploys — set as the AWS_DEPLOY_ROLE_ARN repository variable."
+  value       = aws_iam_role.github_deploy.arn
+}
+
 output "db_password_ssm_parameter" {
   description = "SSM parameter holding the DB password. Fetch with `aws ssm get-parameter --with-decryption --name <this>`."
   value       = aws_ssm_parameter.db_password.name
