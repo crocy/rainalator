@@ -1,8 +1,8 @@
 name: Claude Code Review
 
 # Runs an automated Claude Code review when a pull request is opened and on
-# every subsequent push to the PR branch (synchronize). Requires an
-# ANTHROPIC_API_KEY repository secret.
+# every subsequent push to the PR branch (synchronize). Requires a
+# CLAUDE_CODE_OAUTH_TOKEN repository secret (Claude subscription auth).
 on:
   pull_request:
     types: [opened, synchronize]
@@ -30,7 +30,7 @@ jobs:
       - name: Claude review
         uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             Review the changes in this pull request and post your findings as a
             PR review. Focus on real problems over style nits, and ground every
