@@ -1,0 +1,137 @@
+name: Backend
+
+# Build + test on PRs; on pushes to main (or manual dispatch from main),
+# additionally deploy to the EC2 instance via SSM Run Command — the same
+# `git pull && docker compose up -d --build` flow documented in the README,
+# just automated.
+#
+# One-time setup (see README "CI/CD"):
+#   - terraform apply creates the GitHub OIDC provider + deploy role
+#     (infra/terraform/github-actions.tf)
+#   - repo variable AWS_DEPLOY_ROLE_ARN = terraform output github_actions_role_arn
+#   - repo variable AWS_REGION (optional, defaults to eu-central-1)
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "docker-compose.prod.yml"
+      - ".github/workflows/backend.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "docker-compose.prod.yml"
+      - ".github/workflows/backend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Integration tests use Testcontainers (real PostGIS + LocalStack);
+      # Docker is preinstalled on ubuntu-latest runners.
+      - name: Build and test
+        run: ./gradlew build
+
+  deploy:
+    name: Deploy to EC2
+    needs: test
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Serialize deploys; never cancel one mid-flight.
+    concurrency:
+      group: backend-deploy
+      cancel-in-progress: false
+    permissions:
+      id-token: write # OIDC token for assuming the AWS deploy role
+      contents: read
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+
+      - name: Deploy via SSM Run Command
+        run: |
+          set -euo pipefail
+
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=rainalator-app" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" ]]; then
+            echo "::error::No running EC2 instance tagged Name=rainalator-app found"
+            exit 1
+          fi
+          echo "Deploying to $INSTANCE_ID"
+
+          # The remote script runs as root on the instance. `reset --hard`
+          # instead of `pull` so a force-pushed main can't wedge the clone;
+          # untracked files (the .env symlink) are left alone.
+          # `--wait` makes compose block until the backend healthcheck
+          # passes, so a broken image fails this job instead of going dark.
+          SCRIPT=$(cat <<'EOS'
+          set -euxo pipefail
+          cd /opt/rainalator/repo
+          git fetch --depth 1 origin main
+          git reset --hard FETCH_HEAD
+          docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 600
+          docker image prune -f
+          EOS
+          )
+
+          CMD_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "backend deploy ${GITHUB_SHA}" \
+            --parameters "$(jq -n --arg s "$SCRIPT" '{commands: ($s | split("\n")), executionTimeout: ["3600"]}')" \
+            --query 'Command.CommandId' --output text)
+          echo "SSM command: $CMD_ID"
+
+          # The on-instance Gradle + Docker build on a t4g.small can take a
+          # while; poll for up to 30 minutes.
+          STATUS=Pending
+          for _ in $(seq 1 120); do
+            sleep 15
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+              --query 'Status' --output text 2>/dev/null || echo Pending)
+            echo "status: $STATUS"
+            case "$STATUS" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+          done
+
+          echo "--- remote stdout ---"
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+            --query 'StandardOutputContent' --output text
+          echo "--- remote stderr ---"
+          aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
+            --query 'StandardErrorContent' --output text
+
+          if [[ "$STATUS" != "Success" ]]; then
+            echo "::error::Backend deploy finished with status $STATUS"
+            exit 1
+          fi
+          echo "Backend deployed and healthy."
