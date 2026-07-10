@@ -50,5 +50,7 @@ jobs:
             If the diff looks good, say so briefly. Use inline comments for
             specific lines and a short summary for overall feedback.
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-opus-4-8
+            --effort xhigh
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
             --max-turns 15
