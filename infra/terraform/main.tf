@@ -258,6 +258,14 @@ resource "aws_instance" "app" {
     http_put_response_hop_limit = 2
   }
 
+  # Amazon publishes new AL2023 AMIs every few weeks; without this, any
+  # apply after a release replaces the instance (downtime + re-bootstrap).
+  # Roll to the current AMI deliberately with:
+  #   terraform apply -replace=aws_instance.app
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   tags = {
     Name = "${local.name_prefix}-app"
   }
