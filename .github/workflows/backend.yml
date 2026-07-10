@@ -58,7 +58,7 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 70
     # Serialize deploys; never cancel one mid-flight.
     concurrency:
       group: backend-deploy
@@ -110,9 +110,11 @@ jobs:
           echo "SSM command: $CMD_ID"
 
           # The on-instance Gradle + Docker build on a t4g.small can take a
-          # while; poll for up to 30 minutes.
+          # while; poll for up to 60 minutes, matching the command's
+          # executionTimeout so a slow-but-successful deploy isn't
+          # misreported as failed.
           STATUS=Pending
-          for _ in $(seq 1 120); do
+          for _ in $(seq 1 240); do
             sleep 15
             STATUS=$(aws ssm get-command-invocation \
               --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" \
