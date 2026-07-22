@@ -348,6 +348,31 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "archive" {
   }
 }
 
+# db-dumps/ holds transient exports from infra/pull-prod-db.sh. The script
+# deletes them itself; this expiry is the backstop for runs that die before
+# cleanup (killed mid-transfer, network loss). Scoped to the prefix so the
+# indefinitely-retained srd3/ archive is untouched.
+resource "aws_s3_bucket_lifecycle_configuration" "archive" {
+  bucket = aws_s3_bucket.archive.id
+
+  rule {
+    id     = "expire-db-dumps"
+    status = "Enabled"
+
+    filter {
+      prefix = "db-dumps/"
+    }
+
+    expiration {
+      days = 1
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
 ############################################
 # S3: frontend static site (private, served via CloudFront OAC)
 ############################################
