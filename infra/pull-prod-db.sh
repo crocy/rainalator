@@ -125,10 +125,14 @@ jq -n \
   --arg timeout "$REMOTE_TIMEOUT_SECS" \
   '{commands: [$c0, $c1, $c2, $c3], executionTimeout: [$timeout]}' > "$PARAMS_FILE"
 
-S3_OBJECT_CREATED=0
+# A failed remote dump can still leave a (truncated) object — s3 cp completes
+# on EOF before pipefail propagates — so delete whenever the command was sent,
+# not just on success; s3 rm on a never-created key is a harmless no-op. The
+# db-dumps/ lifecycle rule (main.tf) mops up whatever this trap can't reach.
+DUMP_COMMAND_SENT=0
 cleanup() {
   rm -f "$PARAMS_FILE"
-  if [[ "$S3_OBJECT_CREATED" -eq 1 ]]; then
+  if [[ "$DUMP_COMMAND_SENT" -eq 1 ]]; then
     aws s3 rm "$S3_URI" --region "$AWS_REGION" >/dev/null 2>&1 \
       || log "WARNING: could not delete $S3_URI — remove it manually"
   fi
@@ -144,6 +148,7 @@ COMMAND_ID=$(aws ssm send-command \
   --parameters "file://$PARAMS_FILE" \
   --region "$AWS_REGION" \
   --query 'Command.CommandId' --output text)
+DUMP_COMMAND_SENT=1
 
 STATUS=InProgress
 ELAPSED=0
@@ -163,7 +168,6 @@ if [[ "$STATUS" != "Success" ]]; then
     --query 'StandardErrorContent' --output text >&2 || true
   fail "remote dump failed with status $STATUS"
 fi
-S3_OBJECT_CREATED=1
 
 REMOTE_ROWS=$(aws ssm get-command-invocation \
   --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
