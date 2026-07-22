@@ -119,11 +119,9 @@ REMOTE_PSQL="docker exec $PROD_DB_CONTAINER psql -U $PGUSER -d $PGDB -v ON_ERROR
 PARAMS_FILE="$(mktemp)"
 jq -n \
   --arg c0 "set -euo pipefail" \
-  --arg c1 "ROWS=\$($REMOTE_PSQL -tAc \"SELECT count(*) FROM radar_scans $WHERE\")" \
-  --arg c2 "echo rows=\$ROWS" \
-  --arg c3 "$REMOTE_PSQL -c \"COPY (SELECT $COLUMNS FROM radar_scans $WHERE ORDER BY scan_time) TO STDOUT\" | gzip | aws s3 cp - $S3_URI --region $AWS_REGION" \
+  --arg c1 "$REMOTE_PSQL -c \"COPY (SELECT $COLUMNS FROM radar_scans $WHERE ORDER BY scan_time) TO STDOUT\" | gzip | aws s3 cp - $S3_URI --region $AWS_REGION" \
   --arg timeout "$REMOTE_TIMEOUT_SECS" \
-  '{commands: [$c0, $c1, $c2, $c3], executionTimeout: [$timeout]}' > "$PARAMS_FILE"
+  '{commands: [$c0, $c1], executionTimeout: [$timeout]}' > "$PARAMS_FILE"
 
 # A failed remote dump can still leave a (truncated) object — s3 cp completes
 # on EOF before pipefail propagates — so delete whenever the command was sent,
@@ -169,11 +167,7 @@ if [[ "$STATUS" != "Success" ]]; then
   fail "remote dump failed with status $STATUS"
 fi
 
-REMOTE_ROWS=$(aws ssm get-command-invocation \
-  --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" \
-  --query 'StandardOutputContent' --output text | grep -oP '(?<=^rows=)\d+' || true)
-[[ -n "$REMOTE_ROWS" ]] || fail "could not parse row count from remote output"
-log "remote dump complete: $REMOTE_ROWS rows"
+log "remote dump complete"
 
 ############################################
 # Download -> staging -> idempotent merge
@@ -184,9 +178,12 @@ local_psql -c "SET client_min_messages = warning; DROP TABLE IF EXISTS $STAGING_
 aws s3 cp "$S3_URI" - --region "$AWS_REGION" | gunzip \
   | local_psql -c "COPY $STAGING_TABLE ($COLUMNS) FROM STDIN" >/dev/null
 
+# No prod-side row-count cross-check: a separate count(*) races with live
+# ingestion (separate snapshots), spuriously tripping the guard. Integrity is
+# already covered — a psql dying mid-COPY fails the remote command (pipefail
+# -> SSM status Failed, aborting before download), and a truncated/corrupted
+# download fails gunzip's CRC check (pipefail aborts before the merge).
 STAGED=$(local_psql -tAc "SELECT count(*) FROM $STAGING_TABLE")
-[[ "$STAGED" == "$REMOTE_ROWS" ]] \
-  || fail "staged $STAGED rows but prod reported $REMOTE_ROWS — transfer incomplete, aborting before merge"
 
 INSERTED=$(local_psql -tAc "WITH ins AS (
     INSERT INTO radar_scans ($COLUMNS)
