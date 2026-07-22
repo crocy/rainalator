@@ -194,6 +194,8 @@ Alternative Dockerfiles are provided for legacy JAR, GraalVM native, and native-
 
 Starts on `localhost:8080` with live coding enabled. Requires a running PostgreSQL — either via `docker compose up db` from the project root, or any PostgreSQL 16+ with PostGIS 3.4.
 
+To seed the local DB with real data from prod (the local ingester only collects while running), use `infra/pull-prod-db.sh [--days N | --full]` from the project root — it copies `radar_scans` rows from the prod DB via SSM + an S3 bounce and merges them idempotently. Defaults to the last 30 days; needs AWS credentials and a local schema (run the backend once first so Flyway creates it).
+
 ### Production build
 
 ```shell
