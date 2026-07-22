@@ -49,7 +49,7 @@ fail() { echo "[pull-prod-db] ERROR: $*" >&2; exit 1; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --days)
-      [[ "${2:-}" =~ ^[0-9]+$ ]] || fail "--days requires a positive integer"
+      [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || fail "--days requires a positive integer"
       DAYS="$2"; shift 2 ;;
     --full)
       FULL=1; shift ;;
