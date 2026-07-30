@@ -1,3 +1,4 @@
+import { NgZone } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MapComponent } from './map.component';
 import * as L from 'leaflet';
@@ -136,6 +137,93 @@ describe('MapComponent', () => {
       map.fire('draw:deleted');
 
       expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it('should emit updated WKT when a shape is edited', () => {
+      const spy = spyOn(component.polygonDrawn, 'emit');
+      const rectangle = L.rectangle([
+        [46.0, 14.5],
+        [46.1, 14.6],
+      ]);
+      map.fire('draw:created', { layer: rectangle, layerType: 'rectangle' });
+      spy.calls.reset();
+
+      rectangle.setBounds(L.latLngBounds([45.0, 13.0], [45.5, 13.5]));
+      map.fire('draw:edited', { layers: L.layerGroup([rectangle]) });
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const wkt = spy.calls.first().args[0] as string;
+      expect(wkt).toContain('13 45');
+      expect(wkt).toContain('13.5 45.5');
+    });
+
+    it('should emit updated WKT when an edited circle is saved', () => {
+      const spy = spyOn(component.polygonDrawn, 'emit');
+      const circle = L.circle([46.05, 14.55], { radius: 5000 });
+      map.fire('draw:created', { layer: circle, layerType: 'circle' });
+      spy.calls.reset();
+
+      circle.setRadius(8000);
+      map.fire('draw:edited', { layers: L.layerGroup([circle]) });
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const wkt = spy.calls.first().args[0] as string;
+      // 64-point circle approximation + closing point
+      expect(wkt.replace('POLYGON((', '').replace('))', '').split(', ').length).toBe(65);
+    });
+
+    // Leaflet handlers are registered outside the Angular zone (afterNextRender),
+    // so emits must re-enter the zone or bound inputs go stale until an unrelated
+    // change-detection cycle — analyses would run against the previously drawn polygon.
+    describe('zone re-entry', () => {
+      let zone: NgZone;
+
+      beforeEach(() => {
+        zone = TestBed.inject(NgZone);
+      });
+
+      it('polygonDrawn emission runs inside the Angular zone when draw:created fires outside it', () => {
+        let emittedInZone: boolean | null = null;
+        component.polygonDrawn.subscribe(() => {
+          emittedInZone = NgZone.isInAngularZone();
+        });
+        const polygon = L.polygon([[46, 14.5], [46, 14.6], [46.1, 14.5]]);
+
+        zone.runOutsideAngular(() => {
+          map.fire('draw:created', { layer: polygon, layerType: 'polygon' });
+        });
+
+        expect(emittedInZone).toBeTrue();
+      });
+
+      it('polygonDrawn emission runs inside the Angular zone when draw:edited fires outside it', () => {
+        const rectangle = L.rectangle([[46.0, 14.5], [46.1, 14.6]]);
+        map.fire('draw:created', { layer: rectangle, layerType: 'rectangle' });
+
+        let emittedInZone: boolean | null = null;
+        component.polygonDrawn.subscribe(() => {
+          emittedInZone = NgZone.isInAngularZone();
+        });
+
+        zone.runOutsideAngular(() => {
+          map.fire('draw:edited', { layers: L.layerGroup([rectangle]) });
+        });
+
+        expect(emittedInZone).toBeTrue();
+      });
+
+      it('polygonCleared emission runs inside the Angular zone when draw:deleted fires outside it', () => {
+        let emittedInZone: boolean | null = null;
+        component.polygonCleared.subscribe(() => {
+          emittedInZone = NgZone.isInAngularZone();
+        });
+
+        zone.runOutsideAngular(() => {
+          map.fire('draw:deleted');
+        });
+
+        expect(emittedInZone).toBeTrue();
+      });
     });
   });
 });

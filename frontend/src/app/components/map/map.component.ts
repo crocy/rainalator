@@ -1,9 +1,11 @@
 import {
   Component,
   EventEmitter,
+  NgZone,
   Output,
   afterNextRender,
   ElementRef,
+  inject,
   viewChild,
 } from '@angular/core';
 // Default import (not namespace) so we reference the live CJS module —
@@ -54,6 +56,7 @@ export class MapComponent {
   @Output() polygonCleared = new EventEmitter<void>();
 
   private mapEl = viewChild.required<ElementRef<HTMLDivElement>>('mapEl');
+  private zone = inject(NgZone);
   private map!: L.Map;
   private drawnItems = new L.FeatureGroup();
   private overlay: L.ImageOverlay | null = null;
@@ -92,17 +95,31 @@ export class MapComponent {
     });
     this.map.addControl(drawControl);
 
+    // initMap runs in afterNextRender, which is outside the Angular zone — so
+    // every Leaflet event handler here fires outside it too. Emits must re-enter
+    // the zone via zone.run, or bound inputs (e.g. the query panel's polygon)
+    // stay stale until an unrelated change-detection cycle.
     this.map.on(L.Draw.Event.CREATED, (event: L.LeafletEvent) => {
       const drawEvent = event as L.DrawEvents.Created;
       // Only allow one shape at a time
       this.drawnItems.clearLayers();
       this.drawnItems.addLayer(drawEvent.layer);
       const wkt = this.layerToWkt(drawEvent.layer, drawEvent.layerType);
-      this.polygonDrawn.emit(wkt);
+      this.zone.run(() => this.polygonDrawn.emit(wkt));
+    });
+
+    this.map.on(L.Draw.Event.EDITED, (event: L.LeafletEvent) => {
+      const layers = (event as L.DrawEvents.Edited).layers.getLayers();
+      if (layers.length === 0) return;
+      // Single-shape policy: the only drawn shape is the one that was edited
+      const layer = layers[0];
+      const layerType = layer instanceof L.Circle ? 'circle' : 'polygon';
+      const wkt = this.layerToWkt(layer, layerType);
+      this.zone.run(() => this.polygonDrawn.emit(wkt));
     });
 
     this.map.on(L.Draw.Event.DELETED, () => {
-      this.polygonCleared.emit();
+      this.zone.run(() => this.polygonCleared.emit());
     });
   }
 
