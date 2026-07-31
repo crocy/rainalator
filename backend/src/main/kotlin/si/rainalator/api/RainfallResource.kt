@@ -62,6 +62,8 @@ class RainfallResource(
                 )
             },
             accumulatedRainfallMm = result.accumulatedRainfallMm,
+            totalVolumeM3 = result.totalVolumeM3,
+            areaKm2 = result.areaKm2,
             scanCount = result.scans.size,
         )
 

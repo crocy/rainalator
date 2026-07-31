@@ -14,28 +14,48 @@ class RainfallAnalysisService(private val dataSource: DataSource) {
 
     private val colorScale = RainfallColorScale()
 
+    private companion object {
+        /** ARSO publishes one scan per 5 minutes; each scan's rate holds for that interval. */
+        const val SCAN_INTERVAL_HOURS = 5.0 / 60.0
+    }
+
     fun analyzeRainfall(polygonWkt: String, from: ZonedDateTime, to: ZonedDateTime): RainfallResult {
+        // Pixel footprint is evaluated at the polygon centroid: the raster is stored on a
+        // uniform degree grid, so a pixel's ground area shrinks with latitude.
         val sql = """
             SELECT
                 scan_time,
-                (ST_SummaryStats(ST_Clip(raster_data, ST_GeomFromText(?, 4326), true), 1, true)).*
-            FROM radar_scans
+                ST_Area(
+                    ST_MakeEnvelope(
+                        LEAST(ST_X(c.centroid), ST_X(c.centroid) + ST_ScaleX(raster_data)),
+                        LEAST(ST_Y(c.centroid), ST_Y(c.centroid) + ST_ScaleY(raster_data)),
+                        GREATEST(ST_X(c.centroid), ST_X(c.centroid) + ST_ScaleX(raster_data)),
+                        GREATEST(ST_Y(c.centroid), ST_Y(c.centroid) + ST_ScaleY(raster_data)),
+                        4326
+                    )::geography
+                ) AS pixel_area_m2,
+                (ST_SummaryStats(ST_Clip(raster_data, p.geom, true), 1, true)).*
+            FROM radar_scans,
+                 (SELECT ST_GeomFromText(?, 4326) AS geom) p,
+                 LATERAL (SELECT ST_Centroid(p.geom) AS centroid) c
             WHERE scan_time >= ? AND scan_time <= ?
-              AND ST_Intersects(bbox, ST_GeomFromText(?, 4326))
+              AND ST_Intersects(bbox, p.geom)
             ORDER BY scan_time
         """.trimIndent()
 
         val scans = mutableListOf<ScanAnalysis>()
+        var pixelAreaM2 = 0.0
+        val areaKm2: Double
 
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setString(1, polygonWkt)
                 stmt.setTimestamp(2, Timestamp.from(from.toInstant()))
                 stmt.setTimestamp(3, Timestamp.from(to.toInstant()))
-                stmt.setString(4, polygonWkt)
 
                 val rs = stmt.executeQuery()
                 while (rs.next()) {
+                    pixelAreaM2 = rs.getDouble("pixel_area_m2")
                     scans.add(
                         ScanAnalysis(
                             scanTime = rs.getTimestamp("scan_time").toInstant().atZone(ZoneOffset.UTC),
@@ -49,10 +69,26 @@ class RainfallAnalysisService(private val dataSource: DataSource) {
                     )
                 }
             }
+
+            // Derived from the polygon alone so the selected area is reportable even with no scans.
+            conn.prepareStatement("SELECT ST_Area(ST_GeomFromText(?, 4326)::geography) / 1e6").use { stmt ->
+                stmt.setString(1, polygonWkt)
+                val rs = stmt.executeQuery()
+                rs.next()
+                areaKm2 = rs.getDouble(1)
+            }
         }
 
-        val accumulatedMm = scans.sumOf { it.mean * (5.0 / 60.0) }
-        return RainfallResult(scans = scans, accumulatedRainfallMm = accumulatedMm)
+        val accumulatedMm = scans.sumOf { it.mean * SCAN_INTERVAL_HOURS }
+        // sum is mm/h totalled over pixels; × hours × pixel area gives mm·m², and 1 mm·m² = 0.001 m³.
+        val totalVolumeM3 = scans.sumOf { it.sum * SCAN_INTERVAL_HOURS } * pixelAreaM2 / 1000.0
+
+        return RainfallResult(
+            scans = scans,
+            accumulatedRainfallMm = accumulatedMm,
+            totalVolumeM3 = totalVolumeM3,
+            areaKm2 = areaKm2,
+        )
     }
 
     fun renderOverlayPng(scanTime: ZonedDateTime): OverlayImage? {

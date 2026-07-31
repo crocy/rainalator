@@ -14,7 +14,11 @@ data class ScanAnalysis(
 
 data class RainfallResult(
     val scans: List<ScanAnalysis>,
+    /** Area-averaged depth — what a gauge inside the polygon would collect on average. Independent of polygon size. */
     val accumulatedRainfallMm: Double,
+    /** Total water collected over the polygon: depth × area. Grows with polygon size. */
+    val totalVolumeM3: Double,
+    val areaKm2: Double,
 )
 
 data class OverlayImage(
