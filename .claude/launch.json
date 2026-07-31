@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "db",
+      "runtimeExecutable": "docker",
+      "runtimeArgs": ["compose", "up", "db"],
+      "port": 5432
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "./gradlew",
+      "runtimeArgs": ["quarkusDev", "--console=plain"],
+      "cwd": "backend",
+      "port": 8080
+    },
+    {
+      "name": "frontend-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "cwd": "frontend",
+      "port": 4200
+    }
+  ]
+}
