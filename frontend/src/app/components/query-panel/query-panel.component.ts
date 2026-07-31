@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RainfallService } from '../../services/rainfall.service';
 import { RainfallQueryResponse } from '../../models/rainfall.models';
+import { polygonAreaKm2 } from '../../utils/polygon-area';
 
 @Component({
   selector: 'app-query-panel',
@@ -17,16 +18,20 @@ import { RainfallQueryResponse } from '../../models/rainfall.models';
       <div class="form-group">
         <label>From</label>
         <div class="datetime-row">
-          <input type="date" [(ngModel)]="fromDatePart" />
-          <input type="time" [(ngModel)]="fromTimePart" />
+          <input type="date" [ngModel]="fromDatePart"
+                 (ngModelChange)="fromDatePart = $event; onRangeChanged()" />
+          <input type="time" [ngModel]="fromTimePart"
+                 (ngModelChange)="fromTimePart = $event; onRangeChanged()" />
         </div>
       </div>
 
       <div class="form-group">
         <label>To</label>
         <div class="datetime-row">
-          <input type="date" [(ngModel)]="toDatePart" />
-          <input type="time" [(ngModel)]="toTimePart" />
+          <input type="date" [ngModel]="toDatePart"
+                 (ngModelChange)="toDatePart = $event; onRangeChanged()" />
+          <input type="time" [ngModel]="toTimePart"
+                 (ngModelChange)="toTimePart = $event; onRangeChanged()" />
         </div>
       </div>
 
@@ -41,6 +46,15 @@ import { RainfallQueryResponse } from '../../models/rainfall.models';
       <p *ngIf="!polygon" class="no-polygon-hint">
         Draw a polygon on the map for rainfall analysis.
       </p>
+
+      <div *ngIf="polygon" class="analysis-scope">
+        <span class="scope-heading">Measured across</span>
+        <span class="scope-terms">
+          <span class="scope-term">{{ selectedAreaKm2 | number:'1.0-0' }} km²</span>
+          <span class="scope-joiner">over</span>
+          <span class="scope-term">{{ selectedDurationLabel }}</span>
+        </span>
+      </div>
 
       <button
         class="analyze-btn"
@@ -58,10 +72,7 @@ import { RainfallQueryResponse } from '../../models/rainfall.models';
         <div class="accumulated">
           <span class="value">{{ result.accumulatedRainfallMm | number:'1.2-2' }}</span>
           <span class="unit">mm</span>
-          <span class="label">
-            Accumulated Rainfall over
-            {{ result.areaKm2 | number:'1.0-0' }} km² in {{ selectedDurationLabel }}
-          </span>
+          <span class="label">Accumulated Rainfall</span>
         </div>
 
         <div class="collected">
@@ -99,11 +110,25 @@ import { RainfallQueryResponse } from '../../models/rainfall.models';
   styleUrl: './query-panel.component.scss',
 })
 export class QueryPanelComponent {
-  @Input() polygon: string | null = null;
+  @Input()
+  set polygon(value: string | null) {
+    if (value === this.drawnPolygon) return;
+    this.drawnPolygon = value;
+    this.selectedAreaKm2 = value ? polygonAreaKm2(value) : 0;
+    this.discardStaleResult();
+  }
+
+  get polygon(): string | null {
+    return this.drawnPolygon;
+  }
+
   @Output() queryResult = new EventEmitter<RainfallQueryResponse>();
   @Output() scanTimesLoaded = new EventEmitter<string[]>();
 
   private rainfallService = inject(RainfallService);
+  private drawnPolygon: string | null = null;
+
+  selectedAreaKm2 = 0;
 
   fromDatePart = '';
   fromTimePart = '';
@@ -167,6 +192,15 @@ export class QueryPanelComponent {
           this.loading = false;
         },
       });
+  }
+
+  onRangeChanged(): void {
+    this.discardStaleResult();
+  }
+
+  /** The scope banner tracks the live selection, so metrics from an older one would contradict it. */
+  private discardStaleResult(): void {
+    this.result = null;
   }
 
   /** Describes the FROM/TO span in whichever unit reads most naturally. */

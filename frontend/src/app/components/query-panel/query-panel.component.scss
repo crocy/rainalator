@@ -113,6 +113,39 @@
   }
 }
 
+// Scope banner: states which area and period every figure below refers to.
+.analysis-scope {
+  margin: 14px 0 10px;
+  padding: 8px 10px;
+  border-left: 3px solid #00bfff;
+  background: rgba(0, 191, 255, 0.07);
+  border-radius: 0 6px 6px 0;
+
+  .scope-heading {
+    display: block;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #667788;
+  }
+
+  // Angular strips whitespace between elements, so space the words with a gap.
+  .scope-terms {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px;
+    margin-top: 3px;
+    font-size: 0.85rem;
+    color: #8899aa;
+  }
+
+  .scope-term {
+    font-weight: 600;
+    color: #dce6f0;
+  }
+}
+
 .result-section {
   margin-top: 8px;
   flex: 1;
