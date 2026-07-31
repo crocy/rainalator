@@ -58,7 +58,15 @@ import { RainfallQueryResponse } from '../../models/rainfall.models';
         <div class="accumulated">
           <span class="value">{{ result.accumulatedRainfallMm | number:'1.2-2' }}</span>
           <span class="unit">mm</span>
-          <span class="label">Accumulated Rainfall</span>
+          <span class="label">
+            Accumulated Rainfall over
+            {{ result.areaKm2 | number:'1.0-0' }} km² in {{ selectedDurationLabel }}
+          </span>
+        </div>
+
+        <div class="collected">
+          <span class="value">{{ formatVolume(result.totalVolumeM3) }}</span>
+          <span class="label">Total Water Collected</span>
         </div>
 
         <div class="meta">
@@ -159,6 +167,27 @@ export class QueryPanelComponent {
           this.loading = false;
         },
       });
+  }
+
+  /** Describes the FROM/TO span in whichever unit reads most naturally. */
+  get selectedDurationLabel(): string {
+    const from = new Date(`${this.fromDatePart}T${this.fromTimePart}`).getTime();
+    const to = new Date(`${this.toDatePart}T${this.toTimePart}`).getTime();
+    const minutes = Math.round((to - from) / 60000);
+    if (!Number.isFinite(minutes) || minutes <= 0) return 'the selected period';
+
+    const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+    if (minutes < 60) return plural(minutes, 'minute');
+    if (minutes % 1440 !== 0 || minutes < 1440) return plural(Math.round(minutes / 60), 'hour');
+    return plural(minutes / 1440, 'day');
+  }
+
+  /** Volumes span m³ to billions across polygon sizes, so pick a magnitude that stays readable. */
+  formatVolume(m3: number): string {
+    if (m3 >= 1e9) return `${(m3 / 1e9).toFixed(2)} billion m³`;
+    if (m3 >= 1e6) return `${(m3 / 1e6).toFixed(1)} million m³`;
+    if (m3 >= 1e3) return `${(m3 / 1e3).toFixed(1)} thousand m³`;
+    return `${Math.round(m3)} m³`;
   }
 
   private toDatePart_(d: Date): string {

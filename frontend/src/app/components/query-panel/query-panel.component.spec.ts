@@ -73,6 +73,94 @@ describe('QueryPanelComponent', () => {
     expect(button.disabled).toBeTrue();
   });
 
+  describe('duration label', () => {
+    const setRange = (fromDate: string, fromTime: string, toDate: string, toTime: string) => {
+      component.fromDatePart = fromDate;
+      component.fromTimePart = fromTime;
+      component.toDatePart = toDate;
+      component.toTimePart = toTime;
+    };
+
+    it('reports sub-hour ranges in minutes', () => {
+      setRange('2024-06-15', '12:00', '2024-06-15', '12:45');
+      expect(component.selectedDurationLabel).toBe('45 minutes');
+    });
+
+    it('uses the singular for exactly one hour', () => {
+      setRange('2024-06-15', '12:00', '2024-06-15', '13:00');
+      expect(component.selectedDurationLabel).toBe('1 hour');
+    });
+
+    it('reports an exact day as a day', () => {
+      setRange('2024-06-15', '00:31', '2024-06-16', '00:31');
+      expect(component.selectedDurationLabel).toBe('1 day');
+    });
+
+    it('reports a part-day span in hours rather than fractional days', () => {
+      setRange('2024-06-15', '00:00', '2024-06-16', '12:00');
+      expect(component.selectedDurationLabel).toBe('36 hours');
+    });
+
+    it('reports multi-day ranges in days', () => {
+      setRange('2024-06-15', '00:00', '2024-06-18', '00:00');
+      expect(component.selectedDurationLabel).toBe('3 days');
+    });
+  });
+
+  describe('volume formatting', () => {
+    it('shows raw cubic metres below a thousand', () => {
+      expect(component.formatVolume(850)).toBe('850 m³');
+    });
+
+    it('scales to thousands', () => {
+      expect(component.formatVolume(12_300)).toBe('12.3 thousand m³');
+    });
+
+    it('scales to millions', () => {
+      expect(component.formatVolume(372_400_000)).toBe('372.4 million m³');
+    });
+
+    it('scales to billions', () => {
+      expect(component.formatVolume(2_500_000_000)).toBe('2.50 billion m³');
+    });
+
+    it('handles zero', () => {
+      expect(component.formatVolume(0)).toBe('0 m³');
+    });
+  });
+
+  describe('result rendering', () => {
+    const result = {
+      scans: [{ scanTime: '2024-06-15T12:00:00Z', mean: 1, min: 0, max: 2, sum: 10, count: 10 }],
+      accumulatedRainfallMm: 4.6,
+      totalVolumeM3: 372_400_000,
+      areaKm2: 80_634,
+      scanCount: 1,
+      intervalMinutes: 5,
+    };
+
+    beforeEach(() => {
+      component.fromDatePart = '2024-06-15';
+      component.fromTimePart = '00:31';
+      component.toDatePart = '2024-06-16';
+      component.toTimePart = '00:31';
+      component.result = result;
+      fixture.detectChanges();
+    });
+
+    it('labels the depth metric with the selected area and duration', () => {
+      const label: HTMLElement = fixture.nativeElement.querySelector('.accumulated .label');
+      expect(label.textContent).toContain('80,634');
+      expect(label.textContent).toContain('km²');
+      expect(label.textContent).toContain('1 day');
+    });
+
+    it('shows the collected volume alongside the depth', () => {
+      const volume: HTMLElement = fixture.nativeElement.querySelector('.collected .value');
+      expect(volume.textContent).toContain('372.4 million');
+    });
+  });
+
   it('loadRadar emits scanTimesLoaded', () => {
     const spy = spyOn(component.scanTimesLoaded, 'emit');
     component.fromDatePart = '2024-06-15';

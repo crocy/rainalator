@@ -147,6 +147,27 @@
   }
 }
 
+.collected {
+  text-align: center;
+  padding: 12px;
+  background: #0d1b2a;
+  border-radius: 8px;
+  margin-bottom: 12px;
+
+  .value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #4dd0a7;
+  }
+
+  .label {
+    display: block;
+    font-size: 0.75rem;
+    color: #667788;
+    margin-top: 4px;
+  }
+}
+
 .meta {
   font-size: 0.8rem;
   color: #8899aa;

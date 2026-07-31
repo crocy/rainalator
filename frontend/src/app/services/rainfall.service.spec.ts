@@ -43,6 +43,8 @@ describe('RainfallService', () => {
         },
       ],
       accumulatedRainfallMm: 1.5,
+      totalVolumeM3: 15_000,
+      areaKm2: 10,
       scanCount: 1,
       intervalMinutes: 5,
     };
