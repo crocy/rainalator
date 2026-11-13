@@ -4,8 +4,9 @@
     {
       "name": "db",
       "runtimeExecutable": "docker",
-      "runtimeArgs": ["compose", "up", "db"],
-      "port": 5432
+      "runtimeArgs": ["compose", "-p", "rainalator", "up", "db"],
+      "port": 5432,
+      "autoPort": false
     },
     {
       "name": "backend",

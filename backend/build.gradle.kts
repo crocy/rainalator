@@ -52,9 +52,12 @@ dependencies {
 group = "si.rainalator"
 version = "1.0.0-SNAPSHOT"
 
+// Pins the compile JDK regardless of the launching JVM. Augmentation needs a matching JDK
+// too, but it runs in the daemon — see gradle/gradle-daemon-jvm.properties.
 java {
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
 }
 
 allOpen {
