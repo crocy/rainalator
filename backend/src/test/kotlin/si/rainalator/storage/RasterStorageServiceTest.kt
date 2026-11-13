@@ -148,9 +148,22 @@ class RasterStorageServiceTest {
 
             val result = service.findScanTimes(
                 from = ZonedDateTime.of(2026, 3, 30, 10, 0, 0, 0, ZoneOffset.UTC),
-                to = ZonedDateTime.of(2026, 3, 30, 10, 5, 0, 0, ZoneOffset.UTC),
+                to = ZonedDateTime.of(2026, 3, 30, 10, 10, 0, 0, ZoneOffset.UTC),
             )
-            assertThat(result).hasSize(2)
+            assertThat(result).containsExactly(t1, t2)
+        }
+
+        @Test
+        fun `excludes a scan landing exactly on the period end`() {
+            val onTheEdge = ZonedDateTime.of(2026, 3, 30, 10, 5, 0, 0, ZoneOffset.UTC)
+            service.insert(makeScan(header = makeHeader().copy(time = onTheEdge)))
+
+            // That scan carries the rate for 10:05–10:10, which is outside the period.
+            val result = service.findScanTimes(
+                from = ZonedDateTime.of(2026, 3, 30, 10, 0, 0, 0, ZoneOffset.UTC),
+                to = onTheEdge,
+            )
+            assertThat(result).isEmpty()
         }
 
         @Test

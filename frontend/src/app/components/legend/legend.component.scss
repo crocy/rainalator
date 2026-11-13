@@ -1,0 +1,47 @@
+:host {
+  display: block;
+}
+
+.legend {
+  padding: 8px 10px;
+  border: 1px solid #2a3a4a;
+  border-radius: 6px;
+  background: rgba(26, 26, 46, 0.95);
+  backdrop-filter: blur(8px);
+  color: #e0e0e0;
+}
+
+.legend-unit {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #00bfff;
+}
+
+.legend-bands {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend-band {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 18px;
+  height: 11px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.band-label {
+  font-size: 0.65rem;
+  font-variant-numeric: tabular-nums;
+  color: #dce6f0;
+}

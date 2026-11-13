@@ -72,8 +72,9 @@ class RainfallAnalysisSubPolygonTest {
         pgDs.user = postgis.username
         pgDs.password = postgis.password
 
-        RasterStorageService(pgDs).insert(scan)
-        analysisService = RainfallAnalysisService(pgDs)
+        val storageService = RasterStorageService(pgDs)
+        storageService.insert(scan)
+        analysisService = RainfallAnalysisService(pgDs, storageService)
     }
 
     @AfterAll

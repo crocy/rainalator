@@ -5,26 +5,26 @@ import jakarta.ws.rs.Consumes
 import jakarta.ws.rs.GET
 import jakarta.ws.rs.POST
 import jakarta.ws.rs.Path
-import jakarta.ws.rs.PathParam
 import jakarta.ws.rs.Produces
 import jakarta.ws.rs.QueryParam
 import jakarta.ws.rs.core.MediaType
 import jakarta.ws.rs.core.Response
+import si.rainalator.analysis.ColorScaleMode
+import si.rainalator.analysis.InvalidQueryException
 import si.rainalator.analysis.RainfallAnalysisService
+import si.rainalator.api.dto.BucketStats
+import si.rainalator.api.dto.FrameStats
+import si.rainalator.api.dto.FramesResponse
 import si.rainalator.api.dto.RainfallQueryRequest
 import si.rainalator.api.dto.RainfallQueryResponse
-import si.rainalator.api.dto.ScanStats
-import si.rainalator.api.dto.ScanTimesResponse
-import si.rainalator.storage.RadarScanRepository
+import java.math.BigDecimal
+import java.math.MathContext
 import java.time.ZonedDateTime
 import java.time.format.DateTimeParseException
 
 @Path("/api/rainfall")
 @ApplicationScoped
-class RainfallResource(
-    private val analysisService: RainfallAnalysisService,
-    private val scanRepository: RadarScanRepository,
-) {
+class RainfallResource(private val analysisService: RainfallAnalysisService) {
 
     @POST
     @Path("/query")
@@ -32,7 +32,7 @@ class RainfallResource(
     @Produces(MediaType.APPLICATION_JSON)
     fun queryRainfall(request: RainfallQueryRequest): Response {
         if (request.polygon.isBlank()) {
-            return Response.status(400).entity(mapOf("error" to "polygon is required")).build()
+            return badRequest("polygon is required")
         }
 
         val from: ZonedDateTime
@@ -41,73 +41,122 @@ class RainfallResource(
             from = ZonedDateTime.parse(request.from)
             to = ZonedDateTime.parse(request.to)
         } catch (e: DateTimeParseException) {
-            return Response.status(400).entity(mapOf("error" to "Invalid date format: ${e.message}")).build()
+            return badRequest("Invalid date format: ${e.message}")
         }
 
-        if (from.isAfter(to)) {
-            return Response.status(400).entity(mapOf("error" to "from must be before to")).build()
+        val result = try {
+            analysisService.analyzeRainfall(request.polygon, from, to, request.bucketMinutes)
+        } catch (e: InvalidQueryException) {
+            return badRequest(e.message)
         }
-
-        val result = analysisService.analyzeRainfall(request.polygon, from, to)
 
         val response = RainfallQueryResponse(
-            scans = result.scans.map { scan ->
-                ScanStats(
-                    scanTime = scan.scanTime.toString(),
-                    mean = scan.mean,
-                    min = scan.min,
-                    max = scan.max,
-                    sum = scan.sum,
-                    count = scan.count,
+            buckets = result.buckets.map { bucket ->
+                BucketStats(
+                    start = bucket.start.toString(),
+                    end = bucket.end.toString(),
+                    depthMm = bucket.depthMm,
+                    meanRateMmH = bucket.meanRateMmH,
+                    minRateMmH = bucket.minRateMmH,
+                    maxRateMmH = bucket.maxRateMmH,
+                    volumeM3 = bucket.volumeM3,
+                    scanCount = bucket.scanCount,
+                    partial = bucket.partial,
                 )
             },
             accumulatedRainfallMm = result.accumulatedRainfallMm,
             totalVolumeM3 = result.totalVolumeM3,
             areaKm2 = result.areaKm2,
-            scanCount = result.scans.size,
+            bucketCount = result.buckets.size,
+            bucketMinutes = result.bucketMinutes,
         )
 
         return Response.ok(response).build()
     }
 
     @GET
-    @Path("/scans")
+    @Path("/frames")
     @Produces(MediaType.APPLICATION_JSON)
-    fun getScanTimes(
-        @QueryParam("from") fromStr: String,
-        @QueryParam("to") toStr: String,
+    fun getFrames(
+        @QueryParam("from") fromStr: String?,
+        @QueryParam("to") toStr: String?,
+        @QueryParam("bucketMinutes") bucketMinutesStr: String?,
+        @QueryParam("scale") scaleStr: String?,
     ): Response {
+        if (fromStr == null || toStr == null) {
+            return badRequest("from and to are required")
+        }
+
         val from: ZonedDateTime
         val to: ZonedDateTime
         try {
             from = ZonedDateTime.parse(fromStr)
             to = ZonedDateTime.parse(toStr)
         } catch (e: DateTimeParseException) {
-            return Response.status(400).entity(mapOf("error" to "Invalid date format: ${e.message}")).build()
+            return badRequest("Invalid date format: ${e.message}")
         }
 
-        val times = scanRepository.findScanTimes(from, to)
-        val response = ScanTimesResponse(
-            scanTimes = times.map { it.toString() },
-            count = times.size,
+        val bucketMinutes = bucketMinutesStr?.toIntOrNull()
+        if (bucketMinutesStr != null && bucketMinutes == null) {
+            return badRequest("bucketMinutes must be a whole number of minutes")
+        }
+
+        val scale = scaleStr?.let { ColorScaleMode.parse(it) }
+        if (scaleStr != null && scale == null) {
+            return badRequest(UNKNOWN_SCALE)
+        }
+
+        val frameList = try {
+            analysisService.listFrames(from, to, bucketMinutes, scale)
+        } catch (e: InvalidQueryException) {
+            return badRequest(e.message)
+        }
+
+        val response = FramesResponse(
+            frames = frameList.frames.map { FrameStats(it.start.toString(), it.end.toString(), it.partial) },
+            count = frameList.frames.size,
+            bucketMinutes = frameList.bucketMinutes,
+            scaleMaxMm = frameList.scaleMaxMm,
         )
 
         return Response.ok(response).build()
     }
 
     @GET
-    @Path("/overlay/{timestamp}")
-    @Produces("image/png")
-    fun getOverlay(@PathParam("timestamp") timestampStr: String): Response {
-        val scanTime: ZonedDateTime
-        try {
-            scanTime = ZonedDateTime.parse(timestampStr)
-        } catch (e: DateTimeParseException) {
-            return Response.status(400).entity("Invalid timestamp format".toByteArray()).build()
+    @Path("/overlay")
+    @Produces("image/png", MediaType.APPLICATION_JSON)
+    fun getOverlay(
+        @QueryParam("start") startStr: String?,
+        @QueryParam("end") endStr: String?,
+        @QueryParam("scale") scaleStr: String?,
+        @QueryParam("scaleMax") scaleMaxStr: String?,
+    ): Response {
+        if (startStr == null || endStr == null) {
+            return badRequest("start and end are required")
         }
 
-        val overlay = analysisService.renderOverlayPng(scanTime)
-            ?: return Response.status(404).entity("No scan at this timestamp".toByteArray()).build()
+        val start: ZonedDateTime
+        val end: ZonedDateTime
+        try {
+            start = ZonedDateTime.parse(startStr)
+            end = ZonedDateTime.parse(endStr)
+        } catch (e: DateTimeParseException) {
+            return badRequest("Invalid date format: ${e.message}")
+        }
+
+        val scale = ColorScaleMode.parse(scaleStr ?: ColorScaleMode.RATE.name)
+            ?: return badRequest(UNKNOWN_SCALE)
+
+        val scaleMax = scaleMaxStr?.toDoubleOrNull()
+        if (scaleMaxStr != null && scaleMax == null) {
+            return badRequest("scaleMax must be a number")
+        }
+
+        val overlay = try {
+            analysisService.renderOverlayPng(start, end, scale, scaleMax)
+        } catch (e: InvalidQueryException) {
+            return badRequest(e.message)
+        } ?: return errorResponse(404, "No scan in this period")
 
         return Response.ok(overlay.pngBytes)
             .type("image/png")
@@ -115,6 +164,31 @@ class RainfallResource(
             .header("X-Bounds-West", overlay.bounds.west.toString())
             .header("X-Bounds-North", overlay.bounds.north.toString())
             .header("X-Bounds-East", overlay.bounds.east.toString())
+            .header("X-Legend-Unit", overlay.legendUnit)
+            .header("X-Legend-Thresholds", overlay.legendThresholds.joinToString(",", transform = ::formatThreshold))
+            .header("X-Legend-Colors", overlay.legendColorsHex.joinToString(","))
             .build()
+    }
+
+    private fun badRequest(message: String): Response = errorResponse(400, message)
+
+    private fun errorResponse(status: Int, message: String): Response =
+        Response.status(status)
+            .type(MediaType.APPLICATION_JSON)
+            .entity(mapOf("error" to message))
+            .build()
+
+    /**
+     * Keeps legend labels readable: 1 rather than 1.0, and 0.0825 rather than the 0.08249999999999999
+     * that rescaling leaves behind. Only the label is rounded — the painter uses the full precision.
+     */
+    private fun formatThreshold(value: Double): String =
+        BigDecimal.valueOf(value).round(LEGEND_PRECISION).stripTrailingZeros().toPlainString()
+
+    private companion object {
+        const val UNKNOWN_SCALE = "scale must be one of rate, fixed, autofit"
+
+        /** Wide enough to keep every literal band edge intact (158.49), narrow enough to drop float noise. */
+        val LEGEND_PRECISION = MathContext(6)
     }
 }

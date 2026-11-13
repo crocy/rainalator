@@ -18,6 +18,12 @@
   font-weight: 600;
   color: #00bfff;
   min-width: 100px;
+  white-space: nowrap;
+
+  // A clipped bucket covers less time than the rest of the sequence.
+  &.partial {
+    color: #ffbb55;
+  }
 }
 
 .slider {
@@ -93,7 +99,7 @@
   }
 }
 
-.scan-count {
+.frame-count {
   font-size: 0.75rem;
   color: #667788;
   min-width: 50px;

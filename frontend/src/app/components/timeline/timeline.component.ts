@@ -6,20 +6,27 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Frame } from '../../models/rainfall.models';
+import { formatClockTime, formatDayMonth, formatFramePeriod } from '../../utils/time-format';
+
+const SCAN_INTERVAL_MINUTES = 5;
 
 @Component({
   selector: 'app-timeline',
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="timeline-bar" *ngIf="scanTimes.length > 0">
-      <span class="timestamp">{{ formatTimestamp(scanTimes[currentIndex]) }}</span>
+    <div class="timeline-bar" *ngIf="frames.length > 0">
+      <span class="timestamp" [class.partial]="frames[currentIndex].partial">
+        {{ formatFrame(frames[currentIndex]) }}
+      </span>
 
       <input
         type="range"
         class="slider"
+        aria-label="Frame"
         [min]="0"
-        [max]="scanTimes.length - 1"
+        [max]="frames.length - 1"
         [value]="currentIndex"
         (input)="onSliderChange($event)"
       />
@@ -46,17 +53,29 @@ import { CommonModule } from '@angular/common';
         <option *ngFor="let s of speedPresets" [value]="s">{{ s }}x</option>
       </select>
 
-      <span class="scan-count">{{ currentIndex + 1 }} / {{ scanTimes.length }}</span>
+      <span class="frame-count">{{ currentIndex + 1 }} / {{ frames.length }}</span>
     </div>
   `,
   styleUrl: './timeline.component.scss',
 })
 export class TimelineComponent implements OnDestroy {
-  @Input() scanTimes: string[] = [];
-  @Output() scanSelected = new EventEmitter<string>();
+  @Input()
+  set frames(value: Frame[]) {
+    this.frameList = value ?? [];
+    // A fresh sequence describes a different window; keeping the old offset would mislead.
+    this.currentIndex = 0;
+  }
+
+  get frames(): Frame[] {
+    return this.frameList;
+  }
+
+  @Output() frameSelected = new EventEmitter<Frame>();
 
   readonly speedPresets = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 5];
   private readonly BASE_INTERVAL_MS = 500;
+
+  private frameList: Frame[] = [];
 
   currentIndex = 0;
   playing = false;
@@ -70,15 +89,15 @@ export class TimelineComponent implements OnDestroy {
   }
 
   previous(): void {
-    if (this.scanTimes.length === 0) return;
+    if (this.frames.length === 0) return;
     this.currentIndex =
-      this.currentIndex > 0 ? this.currentIndex - 1 : this.scanTimes.length - 1;
+      this.currentIndex > 0 ? this.currentIndex - 1 : this.frames.length - 1;
     this.emitCurrent();
   }
 
   next(): void {
-    if (this.scanTimes.length === 0) return;
-    this.currentIndex = (this.currentIndex + 1) % this.scanTimes.length;
+    if (this.frames.length === 0) return;
+    this.currentIndex = (this.currentIndex + 1) % this.frames.length;
     this.emitCurrent();
   }
 
@@ -98,14 +117,15 @@ export class TimelineComponent implements OnDestroy {
     }
   }
 
-  formatTimestamp(iso: string): string {
-    if (!iso) return '';
-    const d = new Date(iso);
-    const hh = d.getHours().toString().padStart(2, '0');
-    const mm = d.getMinutes().toString().padStart(2, '0');
-    const dd = d.getDate().toString().padStart(2, '0');
-    const mo = (d.getMonth() + 1).toString().padStart(2, '0');
-    return `${hh}:${mm} ${dd}/${mo}`;
+  /** A single scan is a moment; a bucket is a span, and the label has to say which. */
+  formatFrame(frame: Frame): string {
+    if (!frame) return '';
+    const start = new Date(frame.start);
+    const spanMinutes = (new Date(frame.end).getTime() - start.getTime()) / 60_000;
+    if (spanMinutes <= SCAN_INTERVAL_MINUTES) {
+      return `${formatClockTime(start)} ${formatDayMonth(start)}`;
+    }
+    return formatFramePeriod(frame.start, frame.end);
   }
 
   ngOnDestroy(): void {
@@ -129,8 +149,8 @@ export class TimelineComponent implements OnDestroy {
   }
 
   private emitCurrent(): void {
-    if (this.scanTimes.length > 0) {
-      this.scanSelected.emit(this.scanTimes[this.currentIndex]);
+    if (this.frames.length > 0) {
+      this.frameSelected.emit(this.frames[this.currentIndex]);
     }
   }
 }

@@ -69,7 +69,7 @@ class RasterStorageService(private val dataSource: DataSource) : RadarScanReposi
     }
 
     override fun findScanTimes(from: ZonedDateTime, to: ZonedDateTime): List<ZonedDateTime> {
-        val sql = "SELECT scan_time FROM radar_scans WHERE scan_time >= ? AND scan_time <= ? ORDER BY scan_time"
+        val sql = "SELECT scan_time FROM radar_scans WHERE scan_time >= ? AND scan_time < ? ORDER BY scan_time"
         dataSource.connection.use { conn ->
             conn.prepareStatement(sql).use { stmt ->
                 stmt.setTimestamp(1, Timestamp.from(from.toInstant()))

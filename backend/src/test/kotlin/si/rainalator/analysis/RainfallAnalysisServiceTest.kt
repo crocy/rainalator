@@ -1,6 +1,7 @@
 package si.rainalator.analysis
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.withinPercentage
 import org.assertj.core.data.Offset
 import org.junit.jupiter.api.AfterAll
@@ -17,6 +18,8 @@ import si.rainalator.ingestion.ProjectionConverter
 import si.rainalator.ingestion.RadarScan
 import si.rainalator.ingestion.SrdHeader
 import si.rainalator.storage.RasterStorageService
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.sql.DriverManager
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
@@ -80,7 +83,7 @@ class RainfallAnalysisServiceTest {
         dataSource = pgDs
 
         storageService = RasterStorageService(dataSource)
-        analysisService = RainfallAnalysisService(dataSource)
+        analysisService = RainfallAnalysisService(dataSource, storageService)
 
         dataSource.connection.use { c ->
             c.createStatement().execute("DELETE FROM radar_scans")
@@ -366,9 +369,14 @@ class RainfallAnalysisServiceTest {
     @Nested
     inner class RenderOverlay {
 
+        private val oneScan = t0 to t0.plusMinutes(5)
+
+        private fun renderRate(start: ZonedDateTime = oneScan.first, end: ZonedDateTime = oneScan.second) =
+            analysisService.renderOverlayPng(start, end, ColorScaleMode.RATE)
+
         @Test
-        fun `returns null when no scan at given timestamp`() {
-            val result = analysisService.renderOverlayPng(t0)
+        fun `returns null when the bucket holds no scan`() {
+            val result = renderRate()
             assertThat(result).isNull()
         }
 
@@ -376,7 +384,7 @@ class RainfallAnalysisServiceTest {
         fun `returns PNG bytes for existing scan`() {
             storageService.insert(makeScan())
 
-            val result = analysisService.renderOverlayPng(t0)
+            val result = renderRate()
 
             assertThat(result).isNotNull()
             // PNG magic bytes: 0x89 0x50 0x4E 0x47
@@ -390,7 +398,7 @@ class RainfallAnalysisServiceTest {
         fun `PNG has correct dimensions`() {
             storageService.insert(makeScan())
 
-            val result = analysisService.renderOverlayPng(t0)!!
+            val result = renderRate()!!
             val image = ImageIO.read(result.pngBytes.inputStream())
 
             assertThat(image.width).isEqualTo(5)
@@ -403,7 +411,7 @@ class RainfallAnalysisServiceTest {
             val values = FloatArray(15) { Float.NaN }
             storageService.insert(makeScan(values = values))
 
-            val result = analysisService.renderOverlayPng(t0)!!
+            val result = renderRate()!!
             val image = ImageIO.read(result.pngBytes.inputStream())
 
             // All pixels should be transparent
@@ -420,7 +428,7 @@ class RainfallAnalysisServiceTest {
             val values = FloatArray(15) { 5.0f }
             storageService.insert(makeScan(values = values))
 
-            val result = analysisService.renderOverlayPng(t0)!!
+            val result = renderRate()!!
             val image = ImageIO.read(result.pngBytes.inputStream())
 
             // All pixels should be non-transparent for uniform 5.0 mm/h
@@ -437,12 +445,412 @@ class RainfallAnalysisServiceTest {
             storageService.insert(makeScan())
             val (sw, ne) = projectionConverter.gridBounds(makeHeader())
 
-            val result = analysisService.renderOverlayPng(t0)!!
+            val result = renderRate()!!
 
             assertThat(result.bounds.south).isCloseTo(sw.lat, Offset.offset(0.001))
             assertThat(result.bounds.west).isCloseTo(sw.lon, Offset.offset(0.001))
             assertThat(result.bounds.north).isCloseTo(ne.lat, Offset.offset(0.001))
             assertThat(result.bounds.east).isCloseTo(ne.lon, Offset.offset(0.001))
+        }
+
+        @Test
+        fun `rate scale on a single-scan bucket paints exactly the per-scan image`() {
+            // Values spread across several bands, none of them sitting on a band edge
+            val values = FloatArray(15) { (it + 1) * 0.7f }
+            storageService.insert(makeScan(values = values))
+
+            val result = renderRate()!!
+
+            val perScan = RainfallColorScale().overlayScale(ColorScaleMode.RATE, spanHours = 1.0)
+            val expected = BufferedImage(5, 3, BufferedImage.TYPE_INT_ARGB)
+            for (y in 0 until 3) {
+                for (x in 0 until 5) {
+                    expected.setRGB(x, y, perScan.toArgb(values[y * 5 + x].toDouble()))
+                }
+            }
+            val encoded = ByteArrayOutputStream().also { ImageIO.write(expected, "PNG", it) }.toByteArray()
+
+            assertThat(result.pngBytes).isEqualTo(encoded)
+        }
+
+        @Test
+        fun `a bucket paints the depth summed over its scans`() {
+            for (i in 0..1) {
+                storageService.insert(
+                    makeScan(header = makeHeader().copy(time = t0.plusMinutes(i * 5L)), values = FloatArray(15) { 9.0f })
+                )
+            }
+
+            val result = analysisService.renderOverlayPng(t0, t0.plusMinutes(10), ColorScaleMode.FIXED)!!
+            val image = ImageIO.read(result.pngBytes.inputStream())
+
+            // 2 scans × 9 mm/h × 5 min = 1.5 mm, which lands in the 1–2 mm band
+            val fixed = RainfallColorScale().overlayScale(ColorScaleMode.FIXED, spanHours = 1.0 / 6)
+            assertThat(image.getRGB(0, 0)).isEqualTo(fixed.toArgb(1.5))
+            assertThat(image.getRGB(0, 0)).isNotEqualTo(fixed.toArgb(0.75))
+        }
+
+        @Test
+        fun `scans on or after the bucket end are excluded`() {
+            for (i in 0..1) {
+                storageService.insert(
+                    makeScan(header = makeHeader().copy(time = t0.plusMinutes(i * 5L)), values = FloatArray(15) { 9.0f })
+                )
+            }
+
+            val result = analysisService.renderOverlayPng(t0, t0.plusMinutes(5), ColorScaleMode.FIXED)!!
+            val image = ImageIO.read(result.pngBytes.inputStream())
+
+            // Only the scan at t0: 9 mm/h × 5 min = 0.75 mm
+            val fixed = RainfallColorScale().overlayScale(ColorScaleMode.FIXED, spanHours = 1.0 / 12)
+            assertThat(image.getRGB(0, 0)).isEqualTo(fixed.toArgb(0.75))
+        }
+
+        @Test
+        fun `autofit stretches the bands to the supplied maximum`() {
+            for (i in 0..1) {
+                storageService.insert(
+                    makeScan(header = makeHeader().copy(time = t0.plusMinutes(i * 5L)), values = FloatArray(15) { 9.0f })
+                )
+            }
+
+            val result = analysisService.renderOverlayPng(
+                t0, t0.plusMinutes(10), ColorScaleMode.AUTOFIT, scaleMax = 3.0,
+            )!!
+            val image = ImageIO.read(result.pngBytes.inputStream())
+
+            val autofit = RainfallColorScale().overlayScale(ColorScaleMode.AUTOFIT, spanHours = 1.0 / 6, scaleMax = 3.0)
+            assertThat(image.getRGB(0, 0)).isEqualTo(autofit.toArgb(1.5))
+        }
+
+        @Test
+        fun `the returned legend describes the painted scale`() {
+            storageService.insert(makeScan())
+
+            val rate = renderRate()!!
+            val fixed = analysisService.renderOverlayPng(t0, t0.plusMinutes(5), ColorScaleMode.FIXED)!!
+
+            assertThat(rate.legendUnit).isEqualTo("mm/h")
+            assertThat(rate.legendThresholds).hasSize(14)
+            assertThat(rate.legendColorsHex).hasSize(15)
+            assertThat(rate.legendColorsHex.first()).isEqualTo("085AFE")
+            assertThat(fixed.legendUnit).isEqualTo("mm")
+            assertThat(fixed.legendThresholds.last()).isCloseTo(200.0, Offset.offset(1e-9))
+        }
+
+        @Test
+        fun `rejects a bucket whose start is not before its end`() {
+            assertThatThrownBy { analysisService.renderOverlayPng(t0, t0, ColorScaleMode.RATE) }
+                .isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("start must be before end")
+        }
+
+        @Test
+        fun `rejects autofit without a positive scaleMax`() {
+            assertThatThrownBy {
+                analysisService.renderOverlayPng(t0, t0.plusMinutes(5), ColorScaleMode.AUTOFIT)
+            }.isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("scaleMax is required for autofit")
+
+            assertThatThrownBy {
+                analysisService.renderOverlayPng(t0, t0.plusMinutes(5), ColorScaleMode.AUTOFIT, scaleMax = 0.0)
+            }.isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("scaleMax is required for autofit")
+        }
+    }
+
+    @Nested
+    inner class BucketedAnalysis {
+
+        private val header = makeHeader()
+        private val wkt = bboxPolygonWkt(makeHeader())
+
+        private fun insertScans(count: Int, from: ZonedDateTime = t0, rateMmPerHour: Float = 6.0f) {
+            for (i in 0 until count) {
+                storageService.insert(
+                    makeScan(
+                        header = header.copy(time = from.plusMinutes(i * 5L)),
+                        values = FloatArray(15) { rateMmPerHour },
+                    )
+                )
+            }
+        }
+
+        @Test
+        fun `without bucketMinutes every scan is its own five-minute bucket`() {
+            insertScans(3)
+
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(15))
+
+            assertThat(result.buckets).hasSize(3)
+            assertThat(result.bucketMinutes).isEqualTo(5)
+            assertThat(result.buckets[0].start).isEqualTo(t0)
+            assertThat(result.buckets[0].end).isEqualTo(t0.plusMinutes(5))
+            assertThat(result.buckets.map { it.scanCount }).containsOnly(1)
+            assertThat(result.buckets.map { it.partial }).containsOnly(false)
+        }
+
+        @Test
+        fun `a per-scan bucket reports the scan's own rate`() {
+            insertScans(1, rateMmPerHour = 6.0f)
+
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(5))
+
+            assertThat(result.buckets).hasSize(1)
+            assertThat(result.buckets[0].meanRateMmH).isCloseTo(6.0, Offset.offset(0.01))
+            assertThat(result.buckets[0].depthMm).isCloseTo(0.5, Offset.offset(0.01))
+        }
+
+        @Test
+        fun `bucketing regroups rows without changing the window totals`() {
+            insertScans(12)
+            val to = t0.plusMinutes(60)
+
+            val perScan = analysisService.analyzeRainfall(wkt, t0, to)
+            val bucketed = analysisService.analyzeRainfall(wkt, t0, to, bucketMinutes = 15)
+
+            assertThat(bucketed.accumulatedRainfallMm).isCloseTo(perScan.accumulatedRainfallMm, Offset.offset(1e-9))
+            assertThat(bucketed.totalVolumeM3).isCloseTo(perScan.totalVolumeM3, Offset.offset(1e-6))
+            assertThat(bucketed.buckets.sumOf { it.depthMm })
+                .isCloseTo(bucketed.accumulatedRainfallMm, Offset.offset(1e-9))
+            assertThat(bucketed.buckets.sumOf { it.volumeM3 })
+                .isCloseTo(bucketed.totalVolumeM3, Offset.offset(1e-6))
+            assertThat(bucketed.buckets.sumOf { it.scanCount }).isEqualTo(12)
+        }
+
+        @Test
+        fun `the oldest bucket is clamped to the window start and marked partial`() {
+            insertScans(12)
+
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(55), bucketMinutes = 15)
+
+            assertThat(result.buckets).hasSize(4)
+            assertThat(result.buckets.first().start).isEqualTo(t0)
+            assertThat(result.buckets.first().end).isEqualTo(t0.plusMinutes(10))
+            assertThat(result.buckets.first().partial).isTrue()
+            assertThat(result.buckets.first().scanCount).isEqualTo(2)
+            assertThat(result.buckets.drop(1).map { it.partial }).containsOnly(false)
+        }
+
+        @Test
+        fun `a partial bucket's mean rate is not diluted by the nominal width`() {
+            insertScans(12)
+
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(55), bucketMinutes = 15)
+
+            // 2 scans of 6 mm/h in a 10-minute bucket: 1.0 mm over 1/6 h is still 6 mm/h,
+            // whereas spreading it over the nominal 15 minutes would read as 4 mm/h.
+            assertThat(result.buckets.first().depthMm).isCloseTo(1.0, Offset.offset(0.01))
+            assertThat(result.buckets.first().meanRateMmH).isCloseTo(6.0, Offset.offset(0.01))
+        }
+
+        @Test
+        fun `buckets holding no scans are still emitted with zeroed statistics`() {
+            insertScans(3, from = t0.plusMinutes(30))
+
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(60), bucketMinutes = 15)
+
+            assertThat(result.buckets).hasSize(4)
+            val empty = result.buckets.first()
+            assertThat(empty.start).isEqualTo(t0)
+            assertThat(empty.scanCount).isEqualTo(0)
+            assertThat(empty.depthMm).isEqualTo(0.0)
+            assertThat(empty.volumeM3).isEqualTo(0.0)
+            assertThat(empty.meanRateMmH).isEqualTo(0.0)
+            assertThat(empty.minRateMmH).isEqualTo(0.0)
+            assertThat(empty.maxRateMmH).isEqualTo(0.0)
+        }
+
+        @Test
+        fun `a scan landing exactly on the period end is excluded`() {
+            insertScans(1, from = t0.plusMinutes(30))
+
+            // That scan carries the rate for 30-35 min, which is outside the period.
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(30), bucketMinutes = 15)
+
+            assertThat(result.buckets.last().end).isEqualTo(t0.plusMinutes(30))
+            assertThat(result.buckets.map { it.scanCount }).containsOnly(0)
+            assertThat(result.accumulatedRainfallMm).isEqualTo(0.0)
+        }
+
+        @Test
+        fun `a bucket never reports a mean rate above its own maximum`() {
+            // Rising rates, and a scan sitting exactly on the period end: this is where an
+            // inclusive edge would over-fill the newest bucket and push its mean above every
+            // rate the bucket contains.
+            for (i in 0..12) {
+                storageService.insert(
+                    makeScan(
+                        header = header.copy(time = t0.plusMinutes(i * 5L)),
+                        values = FloatArray(15) { (2 + i).toFloat() },
+                    )
+                )
+            }
+
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(60), bucketMinutes = 15)
+
+            assertThat(result.buckets.map { it.scanCount }).containsOnly(3)
+            result.buckets.forEach { bucket ->
+                assertThat(bucket.meanRateMmH).isLessThanOrEqualTo(bucket.maxRateMmH)
+                assertThat(bucket.meanRateMmH).isGreaterThanOrEqualTo(bucket.minRateMmH)
+            }
+            assertThat(result.buckets.last().meanRateMmH).isCloseTo(12.0, Offset.offset(0.01))
+        }
+
+        @Test
+        fun `min and max fold across the scans in a bucket`() {
+            storageService.insert(makeScan(header = header.copy(time = t0), values = FloatArray(15) { 2.0f }))
+            storageService.insert(
+                makeScan(
+                    header = header.copy(time = t0.plusMinutes(5)),
+                    values = FloatArray(15) { if (it == 0) 9.0f else 1.0f },
+                )
+            )
+
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(10), bucketMinutes = 10)
+
+            assertThat(result.buckets).hasSize(1)
+            assertThat(result.buckets[0].scanCount).isEqualTo(2)
+            assertThat(result.buckets[0].minRateMmH).isCloseTo(1.0, Offset.offset(0.01))
+            assertThat(result.buckets[0].maxRateMmH).isCloseTo(9.0, Offset.offset(0.01))
+        }
+
+        @Test
+        fun `bucketMinutes is echoed back`() {
+            insertScans(12)
+
+            val result = analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(55), bucketMinutes = 15)
+
+            assertThat(result.bucketMinutes).isEqualTo(15)
+        }
+
+        @Test
+        fun `rejects a bucket shorter than the scan interval`() {
+            assertThatThrownBy { analysisService.analyzeRainfall(wkt, t0, t0.plusHours(1), bucketMinutes = 3) }
+                .isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("bucketMinutes must be at least 5")
+        }
+
+        @Test
+        fun `rejects a bucket that is not a whole number of scans`() {
+            assertThatThrownBy { analysisService.analyzeRainfall(wkt, t0, t0.plusHours(1), bucketMinutes = 7) }
+                .isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("bucketMinutes must be a multiple of 5")
+        }
+
+        @Test
+        fun `rejects a bucket wider than the selected period`() {
+            assertThatThrownBy { analysisService.analyzeRainfall(wkt, t0, t0.plusMinutes(30), bucketMinutes = 60) }
+                .isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("bucketMinutes must not exceed the selected period")
+        }
+
+        @Test
+        fun `rejects a reversed period`() {
+            assertThatThrownBy { analysisService.analyzeRainfall(wkt, t0.plusHours(1), t0) }
+                .isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("from must be before to")
+        }
+    }
+
+    @Nested
+    inner class ListFrames {
+
+        private fun insertScans(count: Int, from: ZonedDateTime = t0, rateMmPerHour: Float = 6.0f) {
+            for (i in 0 until count) {
+                storageService.insert(
+                    makeScan(
+                        header = makeHeader().copy(time = from.plusMinutes(i * 5L)),
+                        values = FloatArray(15) { rateMmPerHour },
+                    )
+                )
+            }
+        }
+
+        @Test
+        fun `un-bucketed frames are one per scan and five minutes wide`() {
+            insertScans(3)
+
+            val frames = analysisService.listFrames(t0, t0.plusMinutes(15), bucketMinutes = null, scale = null)
+
+            assertThat(frames.frames).hasSize(3)
+            assertThat(frames.bucketMinutes).isEqualTo(5)
+            assertThat(frames.frames[0].start).isEqualTo(t0)
+            assertThat(frames.frames[0].end).isEqualTo(t0.plusMinutes(5))
+            assertThat(frames.frames.map { it.partial }).containsOnly(false)
+            assertThat(frames.scaleMaxMm).isNull()
+        }
+
+        @Test
+        fun `bucketed frames cover the period even where scans are missing`() {
+            insertScans(3, from = t0.plusMinutes(30))
+
+            val frames = analysisService.listFrames(t0, t0.plusMinutes(60), bucketMinutes = 15, scale = null)
+
+            assertThat(frames.frames).hasSize(4)
+            assertThat(frames.frames.first().start).isEqualTo(t0)
+            assertThat(frames.frames.last().end).isEqualTo(t0.plusMinutes(60))
+            assertThat(frames.bucketMinutes).isEqualTo(15)
+        }
+
+        @Test
+        fun `scaleMaxMm stays null for the rate and fixed scales`() {
+            insertScans(3)
+
+            assertThat(
+                analysisService.listFrames(t0, t0.plusMinutes(30), 15, ColorScaleMode.RATE).scaleMaxMm
+            ).isNull()
+            assertThat(
+                analysisService.listFrames(t0, t0.plusMinutes(30), 15, ColorScaleMode.FIXED).scaleMaxMm
+            ).isNull()
+        }
+
+        @Test
+        fun `autofit reports the deepest bucket in the period so frames share one scale`() {
+            insertScans(3, from = t0, rateMmPerHour = 6.0f)
+            insertScans(1, from = t0.plusMinutes(30), rateMmPerHour = 60.0f)
+
+            val frames = analysisService.listFrames(t0, t0.plusMinutes(60), 15, ColorScaleMode.AUTOFIT)
+
+            // The 30–45 bucket holds one 60 mm/h scan: 60 × 5/60 = 5 mm, deeper than
+            // the 3 × 6 mm/h scans in the first bucket (1.5 mm).
+            assertThat(frames.scaleMaxMm).isNotNull()
+            assertThat(frames.scaleMaxMm!!).isCloseTo(5.0, Offset.offset(0.01))
+        }
+
+        @Test
+        fun `autofit over a dry period still yields a usable maximum`() {
+            val frames = analysisService.listFrames(t0, t0.plusMinutes(60), 15, ColorScaleMode.AUTOFIT)
+
+            // Floored at the lowest band, so the overlay cannot reject the value frames just handed out.
+            assertThat(frames.scaleMaxMm).isNotNull()
+            assertThat(frames.scaleMaxMm!!).isCloseTo(0.2, Offset.offset(1e-9))
+            assertThat(
+                analysisService.renderOverlayPng(t0, t0.plusMinutes(15), ColorScaleMode.AUTOFIT, frames.scaleMaxMm)
+            ).isNull()
+        }
+
+        @Test
+        fun `autofit never floors below a real measurement`() {
+            insertScans(3, rateMmPerHour = 60.0f)
+
+            val frames = analysisService.listFrames(t0, t0.plusMinutes(60), 15, ColorScaleMode.AUTOFIT)
+
+            assertThat(frames.scaleMaxMm!!).isCloseTo(15.0, Offset.offset(0.01))
+        }
+
+        @Test
+        fun `rejects un-bucketed autofit, which would union every scan separately`() {
+            assertThatThrownBy { analysisService.listFrames(t0, t0.plusMinutes(60), null, ColorScaleMode.AUTOFIT) }
+                .isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("bucketMinutes is required for autofit")
+        }
+
+        @Test
+        fun `rejects a bucket wider than the selected period`() {
+            assertThatThrownBy { analysisService.listFrames(t0, t0.plusMinutes(30), 60, null) }
+                .isInstanceOf(InvalidQueryException::class.java)
+                .hasMessage("bucketMinutes must not exceed the selected period")
         }
     }
 }

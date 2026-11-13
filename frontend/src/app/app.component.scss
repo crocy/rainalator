@@ -55,6 +55,19 @@
   z-index: 999;
 }
 
+.legend-overlay {
+  position: absolute;
+  right: 10px;
+  bottom: 12px;
+  z-index: 999;
+  max-height: calc(100% - 80px);
+  overflow-y: auto;
+}
+
+.map-area:has(.timeline-overlay) .legend-overlay {
+  bottom: 56px;
+}
+
 // Push Leaflet attribution above the timeline bar (Leaflet creates DOM
 // dynamically so Angular scoped styles won't reach it)
 ::ng-deep .leaflet-bottom {

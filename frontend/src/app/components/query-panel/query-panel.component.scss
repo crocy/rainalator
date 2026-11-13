@@ -25,7 +25,8 @@
   flex-direction: column;
   gap: 12px;
   flex: 1;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .form-group {
@@ -40,7 +41,8 @@
     color: #8899aa;
   }
 
-  input {
+  input,
+  select {
     padding: 8px 10px;
     border: 1px solid #2a3a4a;
     border-radius: 4px;
@@ -55,10 +57,57 @@
   }
 }
 
-.datetime-row {
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #2a3a4a;
+}
+
+.tab {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: #8899aa;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+
+  &:hover:not(.active) {
+    background: #16213e;
+    color: #dce6f0;
+  }
+
+  // The 1px pull covers the tablist border, so the panel reads as one surface with the tab.
+  &.active {
+    background: #16213e;
+    border-color: #0f3460;
+    color: #00bfff;
+    margin-bottom: -1px;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #00bfff;
+    outline-offset: -2px;
+  }
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.datetime-row,
+.amount-row {
   display: flex;
   gap: 6px;
+}
 
+.datetime-row {
   input[type="date"] {
     flex: 3;
     min-width: 0;
@@ -70,21 +119,49 @@
   }
 }
 
-.load-radar-btn {
+.amount-row {
+  input[type="number"] {
+    flex: 2;
+    min-width: 0;
+  }
+
+  .unit-select {
+    flex: 3;
+    min-width: 0;
+    cursor: pointer;
+  }
+}
+
+.bucket-hint {
+  font-size: 0.7rem;
+  font-style: italic;
+  color: #667788;
+}
+
+.scale-select {
+  cursor: pointer;
+}
+
+.validation {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 4px;
+  background: rgba(255, 170, 0, 0.1);
+  color: #ffbb55;
+  font-size: 0.8rem;
+}
+
+.load-radar-btn,
+.analyze-btn {
   padding: 10px;
-  border: 1px solid #0f3460;
   border-radius: 6px;
-  background: #0d1b2a;
   color: #00bfff;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s;
-
-  &:hover:not(:disabled) {
-    background: #1a2a3a;
-    border-color: #00bfff;
-  }
 
   &:disabled {
     opacity: 0.4;
@@ -92,24 +169,22 @@
   }
 }
 
+.load-radar-btn {
+  border: 1px solid #0f3460;
+  background: #0d1b2a;
+
+  &:hover:not(:disabled) {
+    background: #1a2a3a;
+    border-color: #00bfff;
+  }
+}
+
 .analyze-btn {
-  padding: 10px;
   border: none;
-  border-radius: 6px;
   background: #0f3460;
-  color: #00bfff;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
 
   &:hover:not(:disabled) {
     background: #1a4a7a;
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
   }
 }
 
@@ -148,21 +223,32 @@
 
 .result-section {
   margin-top: 8px;
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
 }
 
-.accumulated {
+.accumulated,
+.collected {
   text-align: center;
-  padding: 16px;
   background: #0d1b2a;
   border-radius: 8px;
   margin-bottom: 12px;
 
   .value {
-    font-size: 2rem;
     font-weight: 700;
+  }
+
+  .label {
+    display: block;
+    font-size: 0.75rem;
+    color: #667788;
+    margin-top: 4px;
+  }
+}
+
+.accumulated {
+  padding: 16px;
+
+  .value {
+    font-size: 2rem;
     color: #00bfff;
   }
 
@@ -171,33 +257,14 @@
     color: #8899aa;
     margin-left: 4px;
   }
-
-  .label {
-    display: block;
-    font-size: 0.75rem;
-    color: #667788;
-    margin-top: 4px;
-  }
 }
 
 .collected {
-  text-align: center;
   padding: 12px;
-  background: #0d1b2a;
-  border-radius: 8px;
-  margin-bottom: 12px;
 
   .value {
     font-size: 1.4rem;
-    font-weight: 700;
     color: #4dd0a7;
-  }
-
-  .label {
-    display: block;
-    font-size: 0.75rem;
-    color: #667788;
-    margin-top: 4px;
   }
 }
 
@@ -207,10 +274,11 @@
   margin-bottom: 8px;
 }
 
-.scan-table {
+.bucket-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.75rem;
+  white-space: nowrap;
 
   th {
     padding: 6px 4px;
@@ -223,7 +291,25 @@
   td {
     padding: 4px;
     border-bottom: 1px solid #1a2a3a;
+    font-variant-numeric: tabular-nums;
   }
+
+  // A clipped bucket covers less time than its neighbours, so its totals are not comparable.
+  tr.partial td {
+    color: #b0a080;
+    background: rgba(255, 170, 0, 0.06);
+  }
+}
+
+.partial-badge {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: rgba(255, 170, 0, 0.18);
+  color: #ffbb55;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .error {
